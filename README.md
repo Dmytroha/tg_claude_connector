@@ -1,5 +1,7 @@
 # tg_claude_connector
 
+[![CI](https://github.com/Dmytroha/tg_claude_connector/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Dmytroha/tg_claude_connector/actions/workflows/ci.yml)
+
 Шаблон коннектора, который читает Telegram-каналы и чаты ботов.
 Построен на **DDD** и **Clean Architecture**: Java 25 (LTS), Spring Boot 4.1, Maven.
 
