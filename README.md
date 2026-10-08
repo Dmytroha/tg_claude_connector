@@ -70,7 +70,7 @@ docker build -t tg-connector . && docker run -p 8080:8080 -e TELEGRAM_BOT_ENABLE
 |---|---|---|
 | `bot.enabled` / `TELEGRAM_BOT_ENABLED` | `false` | включить Bot API |
 | `bot.token` / `TELEGRAM_BOT_TOKEN` | — | токен бота |
-| `bot.auto-register-chats` | `true` | автоматически регистрировать чаты, из которых пришло сообщение |
+| `bot.auto-register-chats` / `TELEGRAM_BOT_AUTO_REGISTER_CHATS` | `false` | автоматически регистрировать чаты, из которых пришло сообщение. По умолчанию выключено: написать боту или добавить его в группу может кто угодно, поэтому чаты лучше регистрировать через API |
 | `channel-feed.base-url` | `https://t.me` | адрес веб-превью |
 | `polling.enabled` / `polling.interval` | `true` / `60s` | расписание опроса каналов |
 
@@ -103,4 +103,8 @@ curl -XPOST localhost:8080/api/v1/sources/poll              # опросить �
   (`MessageEdited`, ...); сейчас `TelegramUpdateMapper` пропускает `edited_*` апдейты.
 
 In-memory хранилище и in-process события годятся для шаблона, но не переживают рестарт и
-не рассчитаны на несколько инстансов.
+не рассчитаны на несколько инстансов. Изменения источников и сообщений внутри одного процесса
+сериализуются в `IngestionService`. Для БД понадобятся транзакции, уникальный индекс по
+`reference` (контракт `SourceRepository#save`) и optimistic locking на `Source`.
+
+REST API пока без аутентификации — перед выкладкой наружу добавьте Spring Security.

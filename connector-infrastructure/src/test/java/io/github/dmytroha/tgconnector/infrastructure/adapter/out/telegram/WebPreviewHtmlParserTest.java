@@ -13,18 +13,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WebPreviewHtmlParserTest {
 
     @Test
-    void parsesPostsInAscendingOrderAndSkipsEmptyServiceMessages() throws IOException {
-        var html = new String(getClass().getResourceAsStream("/webpreview/channel.html").readAllBytes(), StandardCharsets.UTF_8);
+    void parsesPostsInAscendingOrderAndSkipsEmptyOrBrokenPosts() throws IOException {
+        var messages = new WebPreviewHtmlParser().parse(fixture());
 
-        var messages = new WebPreviewHtmlParser().parse(html);
-
-        assertThat(messages).extracting(m -> m.messageId().value()).containsExactly(100L, 101L);
-        var latest = messages.get(1);
+        assertThat(messages).extracting(m -> m.messageId().value()).containsExactly(100L, 101L, 102L);
+        var latest = messages.get(1); // id 101
         assertThat(latest.messageId()).isEqualTo(new TelegramMessageId(101));
         assertThat(latest.content().text()).isEqualTo("First line\nSecond bold line");
         assertThat(latest.content().attachments())
                 .containsExactly(new Attachment(Attachment.Kind.PHOTO, "https://cdn.telesco.pe/file/photo.jpg"));
         assertThat(latest.author().displayName()).isEqualTo("Telegram News");
         assertThat(latest.postedAt()).isEqualTo(Instant.parse("2026-03-01T10:15:00Z"));
+    }
+
+    @Test
+    void ignoresQuotedReplyPreviewAndBlankDocumentTitles() throws IOException {
+        var reply = new WebPreviewHtmlParser().parse(fixture()).getLast();
+
+        assertThat(reply.messageId().value()).isEqualTo(102L);
+        assertThat(reply.content().text()).isEqualTo("Reply text");
+        assertThat(reply.content().attachments()).isEmpty();
+    }
+
+    private String fixture() throws IOException {
+        try (var in = getClass().getResourceAsStream("/webpreview/channel.html")) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 }

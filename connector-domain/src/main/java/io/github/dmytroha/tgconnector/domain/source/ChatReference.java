@@ -26,7 +26,9 @@ public sealed interface ChatReference permits ChatReference.ChannelUsername, Cha
         if (value.matches("-?\\d+")) {
             return new ChatId(Long.parseLong(value));
         }
-        value = value.replaceFirst("^(https?://)?(t\\.me|telegram\\.me)/(s/)?", "").replaceFirst("^@", "");
+        value = value.replaceFirst("(?i)^(https?://)?(www\\.)?(t\\.me|telegram\\.me)/(s/)?", "")
+                .replaceFirst("^@", "")
+                .replaceFirst("[/?#].*$", ""); // trailing slash, post id, query string
         return new ChannelUsername(value);
     }
 

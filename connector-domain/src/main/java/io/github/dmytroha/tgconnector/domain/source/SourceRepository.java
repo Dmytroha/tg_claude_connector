@@ -8,6 +8,12 @@ import java.util.Optional;
  */
 public interface SourceRepository {
 
+    /**
+     * Inserts or updates a source. Must be atomic with respect to the chat reference, like a unique
+     * constraint in a database.
+     *
+     * @throws DuplicateSourceReferenceException if another source with the same reference exists
+     */
     Source save(Source source);
 
     Optional<Source> findById(SourceId id);

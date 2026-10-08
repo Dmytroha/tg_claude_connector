@@ -13,10 +13,11 @@ public record TelegramProperties(@DefaultValue Bot bot, @DefaultValue ChannelFee
     /**
      * Telegram Bot API (push) settings. Get a token from @BotFather.
      *
-     * @param autoRegisterChats register chats automatically when the bot first sees a message from them
+     * @param autoRegisterChats register chats automatically when the bot first sees a message from them.
+     *                          Off by default: anyone can message a bot or add it to a group.
      */
     public record Bot(@DefaultValue("false") boolean enabled, String token,
-                      @DefaultValue("true") boolean autoRegisterChats) {
+                      @DefaultValue("false") boolean autoRegisterChats) {
     }
 
     /**

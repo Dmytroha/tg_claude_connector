@@ -20,7 +20,8 @@ connector:
       # Bot API (push): private chats, groups, and channels where the bot is an admin.
       enabled: ${TELEGRAM_BOT_ENABLED:false}
       token: ${TELEGRAM_BOT_TOKEN:}
-      auto-register-chats: true
+      # Anyone can message a bot or add it to a group, so keep this off and register chats via the API.
+      auto-register-chats: ${TELEGRAM_BOT_AUTO_REGISTER_CHATS:false}
     channel-feed:
       # Public channels (pull) via https://t.me/s/<channel>
       base-url: https://t.me

@@ -7,6 +7,8 @@ import io.github.dmytroha.tgconnector.domain.shared.DomainException;
 import io.github.dmytroha.tgconnector.domain.source.SourceEvents.SourcePaused;
 import io.github.dmytroha.tgconnector.domain.source.SourceEvents.SourceRegistered;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -27,6 +29,13 @@ class SourceTest {
         assertThat(source.ingestionMode()).isEqualTo(IngestionMode.POLLING);
         assertThat(source.title()).isEqualTo("@telegram");
         assertThat(source.pullEvents()).singleElement().isInstanceOf(SourceRegistered.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"durov", "@durov", "https://t.me/durov", "HTTPS://T.ME/Durov/", "t.me/s/durov",
+            "https://telegram.me/durov/123", "https://t.me/durov?utm_source=x"})
+    void parsesChannelLinkVariants(String raw) {
+        assertThat(ChatReference.parse(raw)).isEqualTo(new ChatReference.ChannelUsername("durov"));
     }
 
     @Test

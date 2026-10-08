@@ -71,6 +71,12 @@ class TelegramUpdateMapper {
         if (m.getVideo() != null) {
             result.add(new Attachment(Attachment.Kind.VIDEO, m.getVideo().getFileId()));
         }
+        if (m.getVideoNote() != null) {
+            result.add(new Attachment(Attachment.Kind.VIDEO, m.getVideoNote().getFileId()));
+        }
+        if (m.getAnimation() != null) {
+            result.add(new Attachment(Attachment.Kind.VIDEO, m.getAnimation().getFileId()));
+        }
         if (m.getDocument() != null) {
             result.add(new Attachment(Attachment.Kind.DOCUMENT, m.getDocument().getFileId()));
         }
@@ -82,6 +88,20 @@ class TelegramUpdateMapper {
         }
         if (m.getSticker() != null) {
             result.add(new Attachment(Attachment.Kind.STICKER, m.getSticker().getFileId()));
+        }
+        // content without a file: keep a readable description so the message is not dropped
+        if (m.getPoll() != null) {
+            result.add(new Attachment(Attachment.Kind.OTHER, "poll: " + m.getPoll().getQuestion()));
+        }
+        if (m.getLocation() != null) {
+            var location = m.getLocation();
+            result.add(new Attachment(Attachment.Kind.OTHER, "location: " + location.getLatitude() + "," + location.getLongitude()));
+        }
+        if (m.getContact() != null) {
+            result.add(new Attachment(Attachment.Kind.OTHER, "contact: " + m.getContact().getPhoneNumber()));
+        }
+        if (m.getDice() != null) {
+            result.add(new Attachment(Attachment.Kind.OTHER, "dice: " + m.getDice().getEmoji() + " " + m.getDice().getValue()));
         }
         return result;
     }

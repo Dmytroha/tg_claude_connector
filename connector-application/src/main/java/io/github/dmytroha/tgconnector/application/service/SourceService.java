@@ -8,6 +8,7 @@ import io.github.dmytroha.tgconnector.application.port.in.QuerySourcesUseCase;
 import io.github.dmytroha.tgconnector.application.port.in.RegisterSourceUseCase;
 import io.github.dmytroha.tgconnector.application.port.out.DomainEventPublisher;
 import io.github.dmytroha.tgconnector.domain.source.ChatReference;
+import io.github.dmytroha.tgconnector.domain.source.DuplicateSourceReferenceException;
 import io.github.dmytroha.tgconnector.domain.source.Source;
 import io.github.dmytroha.tgconnector.domain.source.SourceId;
 import io.github.dmytroha.tgconnector.domain.source.SourceRepository;
@@ -36,7 +37,11 @@ public class SourceService implements RegisterSourceUseCase, ManageSourceUseCase
             throw new SourceAlreadyRegisteredException(reference.asString());
         }
         var source = Source.register(reference, command.title(), clock);
-        sources.save(source);
+        try {
+            sources.save(source);
+        } catch (DuplicateSourceReferenceException e) {
+            throw new SourceAlreadyRegisteredException(reference.asString()); // lost a concurrent registration race
+        }
         events.publish(source.pullEvents());
         return SourceView.from(source);
     }

@@ -1,6 +1,7 @@
 package io.github.dmytroha.tgconnector.infrastructure.adapter.out.persistence;
 
 import io.github.dmytroha.tgconnector.domain.source.ChatReference;
+import io.github.dmytroha.tgconnector.domain.source.DuplicateSourceReferenceException;
 import io.github.dmytroha.tgconnector.domain.source.IngestionMode;
 import io.github.dmytroha.tgconnector.domain.source.Source;
 import io.github.dmytroha.tgconnector.domain.source.SourceId;
@@ -20,27 +21,33 @@ import java.util.concurrent.ConcurrentHashMap;
 @Repository
 class InMemorySourceRepository implements SourceRepository {
 
-    private final Map<SourceId, Source> store = new ConcurrentHashMap<>();
+    private final Map<SourceId, Source> byId = new ConcurrentHashMap<>();
+    private final Map<ChatReference, SourceId> byReference = new ConcurrentHashMap<>();
 
     @Override
     public Source save(Source source) {
-        store.put(source.id(), source);
+        // putIfAbsent acts as a unique constraint on the chat reference
+        var owner = byReference.putIfAbsent(source.reference(), source.id());
+        if (owner != null && !owner.equals(source.id())) {
+            throw new DuplicateSourceReferenceException(source.reference());
+        }
+        byId.put(source.id(), source);
         return source;
     }
 
     @Override
     public Optional<Source> findById(SourceId id) {
-        return Optional.ofNullable(store.get(id));
+        return Optional.ofNullable(byId.get(id));
     }
 
     @Override
     public Optional<Source> findByReference(ChatReference reference) {
-        return store.values().stream().filter(s -> s.reference().equals(reference)).findFirst();
+        return Optional.ofNullable(byReference.get(reference)).map(byId::get);
     }
 
     @Override
     public List<Source> findActiveByIngestionMode(IngestionMode mode) {
-        return store.values().stream()
+        return byId.values().stream()
                 .filter(s -> s.isActive() && s.ingestionMode() == mode)
                 .sorted(Comparator.comparing(Source::registeredAt))
                 .toList();
@@ -48,6 +55,6 @@ class InMemorySourceRepository implements SourceRepository {
 
     @Override
     public List<Source> findAll() {
-        return store.values().stream().sorted(Comparator.comparing(Source::registeredAt)).toList();
+        return byId.values().stream().sorted(Comparator.comparing(Source::registeredAt)).toList();
     }
 }
