@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: tg-connector
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+connector:
+  telegram:
+    bot:
+      # Bot API (push): private chats, groups, and channels where the bot is an admin.
+      enabled: ${TELEGRAM_BOT_ENABLED:false}
+      token: ${TELEGRAM_BOT_TOKEN:}
+      auto-register-chats: true
+    channel-feed:
+      # Public channels (pull) via https://t.me/s/<channel>
+      base-url: https://t.me
+      timeout: 10s
+    polling:
+      enabled: true
+      interval: 60s
