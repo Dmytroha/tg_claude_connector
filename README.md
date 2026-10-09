@@ -63,7 +63,8 @@ connector-domain          Агрегаты, value objects, доменные со
 TELEGRAM_BOT_ENABLED=true TELEGRAM_BOT_TOKEN=123:abc ./mvnw -pl connector-bootstrap -am spring-boot:run
 
 # Docker
-docker build -t tg-connector . && docker run -p 8080:8080 -e TELEGRAM_BOT_ENABLED=true -e TELEGRAM_BOT_TOKEN=... tg-connector
+cp .env.example .env   # заполните секреты
+docker build -t tg-connector . && docker run --env-file .env -p 8080:8080 tg-connector
 ```
 
 Настройки — в `connector-bootstrap/src/main/resources/application.yml` (префикс `connector.telegram`):
@@ -78,6 +79,22 @@ docker build -t tg-connector . && docker run -p 8080:8080 -e TELEGRAM_BOT_ENABLE
 
 Чтобы бот получал посты канала, добавьте его администратором канала. Чтобы видел все сообщения
 в группе, отключите privacy mode в @BotFather (`/setprivacy`).
+
+## Секреты
+
+Приложение читает секреты **только из переменных окружения**, в коде и в `application.yml`
+их нет. Откуда берутся переменные, зависит от среды:
+
+| Среда | Где хранятся секреты |
+|---|---|
+| Локально | файл `.env` (в `.gitignore`); шаблон с описанием переменных — `.env.example` |
+| GitHub Actions | Settings → Secrets and variables → Actions (сейчас тестам секреты не нужны) |
+| Продакшен | хранилище секретов хостинга (Variables/Secrets в панели) или файл с правами `600` вне репозитория на VPS |
+
+Каждый пуш и PR проверяет [gitleaks](https://github.com/gitleaks/gitleaks) (job «Secret scan» в CI):
+если в истории коммитов найдётся токен или ключ, сборка упадёт. Если секрет всё-таки попал
+в репозиторий, удаления коммита недостаточно — секрет нужно сразу перевыпустить
+(для бота: @BotFather → `/revoke`).
 
 ## REST API
 

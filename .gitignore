@@ -30,3 +30,8 @@ target/
 *.iml
 .vscode/
 .DS_Store
+
+# Local secrets (see .env.example)
+.env
+.env.*
+!.env.example
