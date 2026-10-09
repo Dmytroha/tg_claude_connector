@@ -1,4 +1,4 @@
-package io.github.dmytroha.tgconnector.infrastructure.adapter.out.persistence;
+package io.github.dmytroha.tgconnector.infrastructure.adapter.out.persistence.memory;
 
 import io.github.dmytroha.tgconnector.domain.source.ChatReference;
 import io.github.dmytroha.tgconnector.domain.source.DuplicateSourceReferenceException;
@@ -6,6 +6,7 @@ import io.github.dmytroha.tgconnector.domain.source.IngestionMode;
 import io.github.dmytroha.tgconnector.domain.source.Source;
 import io.github.dmytroha.tgconnector.domain.source.SourceId;
 import io.github.dmytroha.tgconnector.domain.source.SourceRepository;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
 
 import java.util.Comparator;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Replace with a JPA/JDBC adapter implementing {@link SourceRepository} for production.
  */
 @Repository
+@ConditionalOnProperty(prefix = "connector", name = "persistence", havingValue = "memory")
 class InMemorySourceRepository implements SourceRepository {
 
     private final Map<SourceId, Source> byId = new ConcurrentHashMap<>();
@@ -32,6 +34,7 @@ class InMemorySourceRepository implements SourceRepository {
             throw new DuplicateSourceReferenceException(source.reference());
         }
         byId.put(source.id(), source);
+        source.markPersisted(source.version() + 1); // the same instance is shared, so no conflict check is needed
         return source;
     }
 

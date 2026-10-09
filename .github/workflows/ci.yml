@@ -64,11 +64,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build image
-        run: docker build -t tg-connector:ci .
-
-      - name: Start container
-        run: docker run -d --name tg-connector -p 8080:8080 tg-connector:ci
+      - name: Start app and database
+        env:
+          DB_PASSWORD: ci-only-password
+        run: docker compose up -d --build
 
       - name: Wait for health endpoint
         run: |
@@ -82,10 +81,22 @@ jobs:
           echo "Application did not become healthy in time"
           exit 1
 
+      - name: Check MCP endpoint
+        run: |
+          curl -fsS -D headers.txt http://localhost:8080/mcp \
+            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            | grep -q telegram-connector
+          grep -qi mcp-session-id headers.txt
+
       - name: Container logs
         if: always()
-        run: docker logs tg-connector
+        env:
+          DB_PASSWORD: ci-only-password
+        run: docker compose logs
 
-      - name: Stop container
+      - name: Stop containers
         if: always()
-        run: docker rm -f tg-connector
+        env:
+          DB_PASSWORD: ci-only-password
+        run: docker compose down -v

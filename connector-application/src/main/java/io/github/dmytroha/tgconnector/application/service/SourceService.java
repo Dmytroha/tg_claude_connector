@@ -2,12 +2,14 @@ package io.github.dmytroha.tgconnector.application.service;
 
 import io.github.dmytroha.tgconnector.application.dto.SourceView;
 import io.github.dmytroha.tgconnector.application.exception.SourceAlreadyRegisteredException;
+import io.github.dmytroha.tgconnector.application.exception.SourceConcurrentlyModifiedException;
 import io.github.dmytroha.tgconnector.application.exception.SourceNotFoundException;
 import io.github.dmytroha.tgconnector.application.port.in.ManageSourceUseCase;
 import io.github.dmytroha.tgconnector.application.port.in.QuerySourcesUseCase;
 import io.github.dmytroha.tgconnector.application.port.in.RegisterSourceUseCase;
 import io.github.dmytroha.tgconnector.application.port.out.DomainEventPublisher;
 import io.github.dmytroha.tgconnector.domain.source.ChatReference;
+import io.github.dmytroha.tgconnector.domain.source.ConcurrentSourceModificationException;
 import io.github.dmytroha.tgconnector.domain.source.DuplicateSourceReferenceException;
 import io.github.dmytroha.tgconnector.domain.source.Source;
 import io.github.dmytroha.tgconnector.domain.source.SourceId;
@@ -69,7 +71,11 @@ public class SourceService implements RegisterSourceUseCase, ManageSourceUseCase
     private SourceView change(UUID sourceId, Consumer<Source> action) {
         var source = load(sourceId);
         action.accept(source);
-        sources.save(source);
+        try {
+            sources.save(source);
+        } catch (ConcurrentSourceModificationException e) {
+            throw new SourceConcurrentlyModifiedException(sourceId);
+        }
         events.publish(source.pullEvents());
         return SourceView.from(source);
     }

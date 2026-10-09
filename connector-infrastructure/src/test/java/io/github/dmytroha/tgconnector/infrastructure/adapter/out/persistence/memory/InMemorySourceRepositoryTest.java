@@ -1,4 +1,4 @@
-package io.github.dmytroha.tgconnector.infrastructure.adapter.out.persistence;
+package io.github.dmytroha.tgconnector.infrastructure.adapter.out.persistence.memory;
 
 import io.github.dmytroha.tgconnector.domain.source.ChatReference;
 import io.github.dmytroha.tgconnector.domain.source.DuplicateSourceReferenceException;

@@ -12,7 +12,12 @@ public interface SourceRepository {
      * Inserts or updates a source. Must be atomic with respect to the chat reference, like a unique
      * constraint in a database.
      *
-     * @throws DuplicateSourceReferenceException if another source with the same reference exists
+     * <p>
+     * Updates use optimistic locking on {@link Source#version()}: on success the repository calls
+     * {@link Source#markPersisted(long)} with the new version.
+     *
+     * @throws DuplicateSourceReferenceException   if another source with the same reference exists
+     * @throws ConcurrentSourceModificationException if the source was changed since it was loaded
      */
     Source save(Source source);
 

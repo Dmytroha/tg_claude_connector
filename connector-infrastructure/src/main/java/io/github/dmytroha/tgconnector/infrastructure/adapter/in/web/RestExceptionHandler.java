@@ -1,6 +1,7 @@
 package io.github.dmytroha.tgconnector.infrastructure.adapter.in.web;
 
 import io.github.dmytroha.tgconnector.application.exception.SourceAlreadyRegisteredException;
+import io.github.dmytroha.tgconnector.application.exception.SourceConcurrentlyModifiedException;
 import io.github.dmytroha.tgconnector.application.exception.SourceNotFoundException;
 import io.github.dmytroha.tgconnector.domain.shared.DomainException;
 import org.springframework.http.HttpStatus;
@@ -19,8 +20,8 @@ class RestExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
-    @ExceptionHandler(SourceAlreadyRegisteredException.class)
-    ProblemDetail conflict(SourceAlreadyRegisteredException e) {
+    @ExceptionHandler({SourceAlreadyRegisteredException.class, SourceConcurrentlyModifiedException.class})
+    ProblemDetail conflict(RuntimeException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 

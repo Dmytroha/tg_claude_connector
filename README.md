@@ -2,8 +2,12 @@
 
 [![CI](https://github.com/Dmytroha/tg_claude_connector/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Dmytroha/tg_claude_connector/actions/workflows/ci.yml)
 
-Шаблон коннектора, который читает Telegram-каналы и чаты ботов.
-Построен на **DDD** и **Clean Architecture**: Java 25 (LTS), Spring Boot 4.1, Maven.
+Коннектор, который читает Telegram-каналы и чаты ботов, хранит сообщения в PostgreSQL и даёт
+Claude доступ к ним через **MCP** (custom connector в claude.ai и приложении Claude).
+Построен на **DDD** и **Clean Architecture**: Java 25 (LTS), Spring Boot 4.1, Spring AI 2.0, Maven.
+
+> ⚠️ MCP-endpoint и REST API пока **без аутентификации**. Не выставляйте коннектор в интернет,
+> пока не добавлен OAuth (следующий шаг).
 
 ## Источники данных
 
@@ -21,11 +25,12 @@
 connector-bootstrap       Spring Boot main, composition root (wiring use cases), ArchUnit-тесты
         │
 connector-infrastructure  Адаптеры
+        │   adapter.in.mcp          MCP-инструменты для Claude (Streamable HTTP, /mcp) → use cases
         │   adapter.in.telegram     Bot API long polling → ReceiveBotMessageUseCase
         │   adapter.in.web          REST API → use cases
         │   adapter.in.scheduling   @Scheduled → PollChannelsUseCase
         │   adapter.out.telegram    ChannelFeedPort ← t.me/s/<channel> (jsoup)
-        │   adapter.out.persistence SourceRepository / MessageRepository (in-memory)
+        │   adapter.out.persistence SourceRepository / MessageRepository: postgres (JDBC + Flyway) или memory
         │   adapter.out.events      DomainEventPublisher → Spring events
         │
 connector-application     Use cases (port.in), порты (port.out), сервисы. Без Spring
@@ -53,29 +58,31 @@ connector-domain          Агрегаты, value objects, доменные со
 
 ## Запуск
 
-Нужен JDK 25.
-
 ```bash
-./mvnw verify                                    # сборка и тесты
-./mvnw -pl connector-bootstrap -am spring-boot:run
+# приложение + PostgreSQL (нужен только Docker)
+cp .env.example .env          # задайте DB_PASSWORD, при необходимости токен бота
+docker compose up -d --build
 
-# с ботом
-TELEGRAM_BOT_ENABLED=true TELEGRAM_BOT_TOKEN=123:abc ./mvnw -pl connector-bootstrap -am spring-boot:run
+# без базы, данные в памяти (нужен JDK 25)
+./mvnw -pl connector-bootstrap -am spring-boot:run -Dspring-boot.run.profiles=memory
 
-# Docker
-cp .env.example .env   # заполните секреты
-docker build -t tg-connector . && docker run --env-file .env -p 8080:8080 tg-connector
+./mvnw verify                 # сборка и тесты; тесты PostgreSQL идут в Testcontainers, если есть Docker
 ```
 
-Настройки — в `connector-bootstrap/src/main/resources/application.yml` (префикс `connector.telegram`):
+Хранилище выбирается свойством `connector.persistence`: `postgres` (по умолчанию) или `memory`
+(профиль `memory`, данные теряются при перезапуске). Схему БД создаёт Flyway при старте
+(`connector-infrastructure/src/main/resources/db/migration`).
+
+Настройки — в `connector-bootstrap/src/main/resources/application.yml`:
 
 | Свойство | По умолчанию | Описание |
 |---|---|---|
-| `bot.enabled` / `TELEGRAM_BOT_ENABLED` | `false` | включить Bot API |
-| `bot.token` / `TELEGRAM_BOT_TOKEN` | — | токен бота |
-| `bot.auto-register-chats` / `TELEGRAM_BOT_AUTO_REGISTER_CHATS` | `false` | автоматически регистрировать чаты, из которых пришло сообщение. По умолчанию выключено: написать боту или добавить его в группу может кто угодно, поэтому чаты лучше регистрировать через API |
-| `channel-feed.base-url` | `https://t.me` | адрес веб-превью |
-| `polling.enabled` / `polling.interval` | `true` / `60s` | расписание опроса каналов |
+| `DB_URL` / `DB_USER` / `DB_PASSWORD` | `jdbc:postgresql://localhost:5432/tgconnector` / `tgconnector` / — | подключение к PostgreSQL |
+| `connector.telegram.bot.enabled` / `TELEGRAM_BOT_ENABLED` | `false` | включить Bot API |
+| `connector.telegram.bot.token` / `TELEGRAM_BOT_TOKEN` | — | токен бота |
+| `connector.telegram.bot.auto-register-chats` / `TELEGRAM_BOT_AUTO_REGISTER_CHATS` | `false` | автоматически регистрировать чаты, из которых пришло сообщение. По умолчанию выключено: написать боту или добавить его в группу может кто угодно, поэтому чаты лучше регистрировать через API |
+| `connector.telegram.channel-feed.base-url` | `https://t.me` | адрес веб-превью |
+| `connector.telegram.polling.enabled` / `.interval` | `true` / `60s` | расписание опроса каналов |
 
 Чтобы бот получал посты канала, добавьте его администратором канала. Чтобы видел все сообщения
 в группе, отключите privacy mode в @BotFather (`/setprivacy`).
@@ -96,6 +103,32 @@ docker build -t tg-connector . && docker run --env-file .env -p 8080:8080 tg-con
 в репозиторий, удаления коммита недостаточно — секрет нужно сразу перевыпустить
 (для бота: @BotFather → `/revoke`).
 
+## MCP: подключение к Claude
+
+Коннектор — удалённый MCP-сервер (Streamable HTTP) по адресу `https://<ваш-домен>/mcp`.
+Его добавляют в claude.ai: **Settings → Connectors → Add custom connector**, после чего он
+доступен и в приложении Claude на телефоне. Для этого коннектор должен быть доступен из интернета
+по HTTPS и защищён аутентификацией (OAuth — следующий шаг).
+
+| Инструмент | Что делает |
+|---|---|
+| `list_sources` | список каналов и чатов, их статус |
+| `get_recent_messages` | последние сообщения источника |
+| `search_messages` | поиск по тексту (подстрока, без учёта регистра) по всем или выбранным источникам, с фильтром по дате |
+| `add_source` | начать читать канал (`@name`, ссылка) или чат бота (`chat_id`) |
+| `pause_source` / `resume_source` | приостановить / возобновить источник |
+| `refresh_sources` | опросить каналы сейчас, не дожидаясь расписания |
+
+Ответы содержат ссылки на посты (`https://t.me/<канал>/<id>`), чтобы Claude мог на них ссылаться.
+Сообщения собираются с момента добавления источника — старой истории канала нет.
+
+Проверить вручную:
+
+```bash
+curl -i localhost:8080/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
 ## REST API
 
 ```bash
@@ -111,19 +144,20 @@ curl -XPOST localhost:8080/api/v1/sources/poll              # опросить �
 
 Ошибки возвращаются в формате RFC 9457 Problem Details (404 / 409 / 422).
 
+## Хранилище и конкурентность
+
+- `sources.reference` уникален: один чат нельзя зарегистрировать дважды.
+- У `Source` есть версия (optimistic locking): если источник изменили параллельно, запись
+  отклоняется (`ConcurrentSourceModificationException`, в REST — 409), а опрос повторится в следующий раз.
+- Сохранение сообщения идемпотентно (`ON CONFLICT DO NOTHING`), поэтому повторный опрос не создаёт дублей.
+- Поиск — `ILIKE` с trigram-индексом (`pg_trgm`), работает для любых языков.
+- Один инстанс приложения: планировщик опроса не координируется между несколькими инстансами.
+
 ## Как расширять
 
-- **Постоянное хранилище**: реализовать `SourceRepository` и `MessageRepository` (JPA/JDBC)
-  в `adapter.out.persistence` и убрать in-memory реализации.
 - **Доставка сообщений дальше** (Kafka, webhook, LLM-обработка): свой `DomainEventPublisher`
   или `@EventListener` на `MessageReceived`.
 - **MTProto** (приватные каналы, история): своя реализация `ChannelFeedPort`.
 - **Редактирования/удаления сообщений**: новый use case и доменные события
   (`MessageEdited`, ...); сейчас `TelegramUpdateMapper` пропускает `edited_*` апдейты.
-
-In-memory хранилище и in-process события годятся для шаблона, но не переживают рестарт и
-не рассчитаны на несколько инстансов. Изменения источников и сообщений внутри одного процесса
-сериализуются в `IngestionService`. Для БД понадобятся транзакции, уникальный индекс по
-`reference` (контракт `SourceRepository#save`) и optimistic locking на `Source`.
-
-REST API пока без аутентификации — перед выкладкой наружу добавьте Spring Security.
+- **Семантический поиск**: эмбеддинги в PostgreSQL (`pgvector`) вместо подстроки.

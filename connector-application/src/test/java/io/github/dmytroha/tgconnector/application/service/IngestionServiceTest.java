@@ -7,6 +7,7 @@ import io.github.dmytroha.tgconnector.application.port.out.ChannelFeedPort;
 import io.github.dmytroha.tgconnector.domain.message.Author;
 import io.github.dmytroha.tgconnector.domain.message.Message;
 import io.github.dmytroha.tgconnector.domain.message.MessageContent;
+import io.github.dmytroha.tgconnector.domain.message.MessageCriteria;
 import io.github.dmytroha.tgconnector.domain.message.MessageKey;
 import io.github.dmytroha.tgconnector.domain.message.MessageReceived;
 import io.github.dmytroha.tgconnector.domain.message.MessageRepository;
@@ -124,6 +125,12 @@ class IngestionServiceTest {
             return store.values().stream().filter(m -> m.id().sourceId().equals(sourceId))
                     .sorted(Comparator.comparing((Message m) -> m.id().telegramMessageId()).reversed())
                     .limit(limit).toList();
+        }
+
+        public List<Message> search(MessageCriteria criteria) {
+            return store.values().stream().filter(criteria::matches)
+                    .sorted(Comparator.comparing(Message::postedAt).reversed())
+                    .limit(criteria.limit()).toList();
         }
     }
 }

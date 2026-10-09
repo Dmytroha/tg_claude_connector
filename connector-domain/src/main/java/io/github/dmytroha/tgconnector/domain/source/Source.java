@@ -52,8 +52,10 @@ public class Source extends AggregateRoot<SourceId> {
      * Rehydrates a source from persistence. Raises no events.
      */
     public static Source restore(SourceId id, ChatReference reference, String title, SourceStatus status,
-                                 TelegramMessageId lastReadMessageId, Instant registeredAt) {
-        return new Source(id, reference, title, status, lastReadMessageId, registeredAt);
+                                 TelegramMessageId lastReadMessageId, Instant registeredAt, long version) {
+        var source = new Source(id, reference, title, status, lastReadMessageId, registeredAt);
+        source.markPersisted(version);
+        return source;
     }
 
     public void pause(Clock clock) {

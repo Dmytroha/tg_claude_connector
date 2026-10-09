@@ -4,6 +4,23 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/tgconnector}
+    username: ${DB_USER:tgconnector}
+    password: ${DB_PASSWORD:}
+  ai:
+    mcp:
+      server:
+        # Streamable HTTP endpoint at /mcp, used by claude.ai custom connectors.
+        # Must be set explicitly: without it Spring AI falls back to the legacy SSE transport.
+        protocol: STREAMABLE
+        name: telegram-connector
+        version: 0.1.0
+        instructions: >
+          Reads Telegram public channels and chats where the connector's bot is a member.
+          Messages are collected continuously from the moment a source is added; there is no older history.
+          Start with list_sources, then use get_recent_messages or search_messages.
+          Include post links when you cite messages.
 
 server:
   port: ${PORT:8080}
@@ -15,6 +32,8 @@ management:
         include: health,info
 
 connector:
+  # postgres (default) or memory: non-durable, for quick local runs and tests (profile "memory")
+  persistence: postgres
   telegram:
     bot:
       # Bot API (push): private chats, groups, and channels where the bot is an admin.
