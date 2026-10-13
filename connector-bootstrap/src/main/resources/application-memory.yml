@@ -1,0 +1,10 @@
+# Run without a database: --spring.profiles.active=memory. Data is lost on restart.
+connector:
+  persistence: memory
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration

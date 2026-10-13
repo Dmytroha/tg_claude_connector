@@ -1,0 +1,11 @@
+# Railway deployment config (https://docs.railway.com/reference/config-as-code)
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Spring Boot + Flyway need a few seconds to start
+healthcheckPath = "/actuator/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

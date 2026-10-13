@@ -1,0 +1,37 @@
+# Local / single-server run: the connector plus PostgreSQL.
+#   cp .env.example .env   # set DB_PASSWORD (and the bot token if needed)
+#   docker compose up -d --build
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tgconnector
+      POSTGRES_USER: tgconnector
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tgconnector -d tgconnector"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/tgconnector
+      DB_USER: tgconnector
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
