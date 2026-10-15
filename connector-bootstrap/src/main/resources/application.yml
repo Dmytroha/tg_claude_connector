@@ -24,6 +24,8 @@ spring:
 
 server:
   port: ${PORT:8080}
+  # behind Railway's proxy: build https URLs (OAuth redirects, issuer) from X-Forwarded-* headers
+  forward-headers-strategy: framework
 
 management:
   endpoints:
@@ -32,6 +34,19 @@ management:
         include: health,info
 
 connector:
+  security:
+    # Public base URL; Railway sets RAILWAY_PUBLIC_DOMAIN once a domain is generated.
+    public-url: ${CONNECTOR_PUBLIC_URL:${RAILWAY_PUBLIC_DOMAIN:}}
+    github:
+      # GitHub OAuth App (Settings → Developer settings → OAuth Apps), callback: <public-url>/login/oauth2/code/github
+      client-id: ${GITHUB_CLIENT_ID:}
+      client-secret: ${GITHUB_CLIENT_SECRET:}
+      # comma-separated GitHub logins allowed to sign in
+      allowed-logins: ${GITHUB_ALLOWED_LOGINS:}
+    mcp-client:
+      # entered in claude.ai when adding the connector (Advanced settings → OAuth Client ID / Secret)
+      client-id: ${MCP_OAUTH_CLIENT_ID:claude}
+      client-secret: ${MCP_OAUTH_CLIENT_SECRET:}
   # postgres (default) or memory: non-durable, for quick local runs and tests (profile "memory")
   persistence: postgres
   telegram:

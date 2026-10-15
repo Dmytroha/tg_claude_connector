@@ -81,13 +81,15 @@ jobs:
           echo "Application did not become healthy in time"
           exit 1
 
-      - name: Check MCP endpoint
+      - name: Check MCP endpoint is protected
         run: |
-          curl -fsS -D headers.txt http://localhost:8080/mcp \
-            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
-            | grep -q telegram-connector
-          grep -qi mcp-session-id headers.txt
+          # without a token /mcp must answer 401 and point Claude to the OAuth metadata
+          status=$(curl -s -o /dev/null -D headers.txt -w '%{http_code}' http://localhost:8080/mcp \
+            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{}')
+          test "$status" = 401
+          grep -qi 'resource_metadata="http://localhost:8080/.well-known/oauth-protected-resource/mcp"' headers.txt
+          curl -fsS http://localhost:8080/.well-known/oauth-protected-resource/mcp | grep -q '"resource":"http://localhost:8080/mcp"'
+          curl -fsS http://localhost:8080/.well-known/oauth-authorization-server | grep -q '"S256"'
 
       - name: Container logs
         if: always()

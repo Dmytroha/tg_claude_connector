@@ -6,8 +6,7 @@
 Claude доступ к ним через **MCP** (custom connector в claude.ai и приложении Claude).
 Построен на **DDD** и **Clean Architecture**: Java 25 (LTS), Spring Boot 4.1, Spring AI 2.0, Maven.
 
-> ⚠️ MCP-endpoint и REST API пока **без аутентификации**. Не выставляйте коннектор в интернет,
-> пока не добавлен OAuth (следующий шаг).
+`/mcp` и REST API закрыты OAuth 2.1: войти может только ваш GitHub-аккаунт (см. «Доступ для Claude»).
 
 ## Источники данных
 
@@ -26,6 +25,7 @@ connector-bootstrap       Spring Boot main, composition root (wiring use cases),
         │
 connector-infrastructure  Адаптеры
         │   adapter.in.mcp          MCP-инструменты для Claude (Streamable HTTP, /mcp) → use cases
+        │   security                OAuth 2.1 authorization server, вход через GitHub, JWT для /mcp и /api
         │   adapter.in.telegram     Bot API long polling → ReceiveBotMessageUseCase
         │   adapter.in.web          REST API → use cases
         │   adapter.in.scheduling   @Scheduled → PollChannelsUseCase
@@ -107,8 +107,7 @@ docker compose up -d --build
 
 Коннектор — удалённый MCP-сервер (Streamable HTTP) по адресу `https://<ваш-домен>/mcp`.
 Его добавляют в claude.ai: **Settings → Connectors → Add custom connector**, после чего он
-доступен и в приложении Claude на телефоне. Для этого коннектор должен быть доступен из интернета
-по HTTPS и защищён аутентификацией (OAuth — следующий шаг).
+доступен и в приложении Claude на телефоне. Коннектор должен быть доступен из интернета по HTTPS.
 
 | Инструмент | Что делает |
 |---|---|
@@ -122,14 +121,37 @@ docker compose up -d --build
 Ответы содержат ссылки на посты (`https://t.me/<канал>/<id>`), чтобы Claude мог на них ссылаться.
 Сообщения собираются с момента добавления источника — старой истории канала нет.
 
-Проверить вручную:
+## Доступ для Claude (OAuth)
 
-```bash
-curl -i localhost:8080/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
-```
+Коннектор сам является OAuth 2.1 сервером авторизации, а Claude — его единственным клиентом.
+Пользователь входит через GitHub, пускаются только логины из `GITHUB_ALLOWED_LOGINS`.
+
+1. Claude обращается к `/mcp` без токена и получает `401` с
+   `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource/mcp"`.
+2. По метаданным (RFC 9728 и RFC 8414) Claude находит `/oauth2/authorize` и `/oauth2/token`.
+3. Пользователь входит через GitHub, Claude получает код (PKCE S256) и обменивает его на токены.
+4. Access-токен — JWT на 1 час с `aud` = адрес `/mcp`; refresh-токен — на 30 дней, при каждом
+   обновлении выдаётся новый.
+
+Ключ подписи и выданные токены хранятся в PostgreSQL, поэтому деплой не разлогинивает Claude.
+
+**Настройка:**
+
+1. Создайте GitHub OAuth App: GitHub → Settings → Developer settings → OAuth Apps → New OAuth App.
+   - Homepage URL: `https://<домен>`
+   - Authorization callback URL: `https://<домен>/login/oauth2/code/github`
+2. Задайте переменные (см. `.env.example`): `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
+   `GITHUB_ALLOWED_LOGINS`, `MCP_OAUTH_CLIENT_SECRET` (любая длинная случайная строка).
+   Публичный адрес на Railway берётся из `RAILWAY_PUBLIC_DOMAIN`, в других местах — `CONNECTOR_PUBLIC_URL`.
+3. В claude.ai: **Add custom connector** → URL `https://<домен>/mcp` → **Advanced settings** →
+   OAuth Client ID `claude` и OAuth Client Secret = `MCP_OAUTH_CLIENT_SECRET`.
+
+Без настроек GitHub приложение запускается, но `/mcp` и `/api` остаются закрытыми.
+Открыты только `/actuator/health`, `/actuator/info` и `/.well-known/*`.
 
 ## REST API
+
+Требует тот же OAuth-токен, что и `/mcp` (заголовок `Authorization: Bearer …`).
 
 ```bash
 # зарегистрировать публичный канал (или числовой chat_id для бота)
