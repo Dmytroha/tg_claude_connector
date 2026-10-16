@@ -4,13 +4,16 @@ import io.github.dmytroha.tgconnector.application.dto.MessageView;
 import io.github.dmytroha.tgconnector.application.exception.SourceNotFoundException;
 import io.github.dmytroha.tgconnector.application.port.in.QueryMessagesUseCase;
 import io.github.dmytroha.tgconnector.application.port.in.SearchMessagesUseCase;
+import io.github.dmytroha.tgconnector.domain.message.Hashtags;
 import io.github.dmytroha.tgconnector.domain.message.MessageCriteria;
 import io.github.dmytroha.tgconnector.domain.message.MessageRepository;
 import io.github.dmytroha.tgconnector.domain.source.SourceId;
 import io.github.dmytroha.tgconnector.domain.source.SourceRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -39,10 +42,24 @@ public class MessageQueryService implements QueryMessagesUseCase, SearchMessages
         var sourceIds = query.sourceIds() == null ? List.<UUID>of() : query.sourceIds();
         var criteria = new MessageCriteria(
                 Optional.ofNullable(query.text()),
-                sourceIds.stream().map(this::existing).collect(Collectors.toSet()),
+                existing(sourceIds),
                 Optional.ofNullable(query.since()),
+                Hashtags.normalize(query.hashtags()),
+                Hashtags.normalize(query.excludeHashtags()),
                 clampLimit(query.limit()));
         return messages.search(criteria).stream().map(MessageView::from).toList();
+    }
+
+    @Override
+    public List<HashtagView> hashtags(List<UUID> sourceIds, Instant since) {
+        return messages.countHashtags(existing(sourceIds == null ? List.of() : sourceIds), Optional.ofNullable(since))
+                .stream()
+                .map(count -> new HashtagView(count.hashtag(), count.messages()))
+                .toList();
+    }
+
+    private Set<SourceId> existing(List<UUID> sourceIds) {
+        return sourceIds.stream().map(this::existing).collect(Collectors.toSet());
     }
 
     private SourceId existing(UUID sourceId) {

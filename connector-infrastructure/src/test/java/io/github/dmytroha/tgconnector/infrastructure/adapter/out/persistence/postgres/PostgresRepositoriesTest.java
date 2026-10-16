@@ -4,6 +4,7 @@ import io.github.dmytroha.tgconnector.domain.message.Attachment;
 import io.github.dmytroha.tgconnector.domain.message.Author;
 import io.github.dmytroha.tgconnector.domain.message.MessageContent;
 import io.github.dmytroha.tgconnector.domain.message.MessageCriteria;
+import io.github.dmytroha.tgconnector.domain.message.MessageRepository;
 import io.github.dmytroha.tgconnector.domain.source.ChatReference;
 import io.github.dmytroha.tgconnector.domain.source.ConcurrentSourceModificationException;
 import io.github.dmytroha.tgconnector.domain.source.DuplicateSourceReferenceException;
@@ -146,6 +147,36 @@ class PostgresRepositoriesTest {
         assertThat(search("50%", Set.of(), null)).extracting(m -> m.id()).containsExactly(release.id());
         assertThat(search("0_", Set.of(), null)).isEmpty(); // LIKE wildcards are escaped
         assertThat(search(null, Set.of(), Instant.parse("2026-10-09T00:00:00Z"))).hasSize(2);
+    }
+
+    @Test
+    void storesHashtagsAndFiltersAndCountsByThem() {
+        var channel = sources.save(Source.register(ChatReference.parse("@jobs"), null, clock));
+        var other = sources.save(Source.register(ChatReference.parse("@other"), null, clock));
+        var at = Instant.parse("2026-10-09T06:00:00Z");
+        List.of(
+                channel.accept(new TelegramMessageId(1), MessageContent.text("Скидка! #реклама"), null, at, clock),
+                channel.accept(new TelegramMessageId(2), MessageContent.text("Склад #Склад #логистика"), null, at, clock),
+                channel.accept(new TelegramMessageId(3), MessageContent.text("Повар #ресторан"), null, at, clock),
+                other.accept(new TelegramMessageId(1), MessageContent.text("Ещё склад #склад"), null, at, clock),
+                channel.accept(new TelegramMessageId(4), MessageContent.text("Без тегов"), null, at, clock))
+                .forEach(m -> messages.save(m.orElseThrow()));
+
+        assertThat(messages.findLatestBySource(channel.id(), 1).getFirst().content().hashtags()).isEmpty();
+        assertThat(searchTags(Set.of("склад"), Set.of())).hasSize(2);
+        assertThat(searchTags(Set.of("склад", "ресторан"), Set.of())).hasSize(3);
+        assertThat(searchTags(Set.of(), Set.of("реклама"))).hasSize(4);
+        assertThat(messages.countHashtags(Set.of(), Optional.empty())).containsExactly(
+                new MessageRepository.HashtagCount("склад", 2),
+                new MessageRepository.HashtagCount("логистика", 1),
+                new MessageRepository.HashtagCount("реклама", 1),
+                new MessageRepository.HashtagCount("ресторан", 1));
+        assertThat(messages.countHashtags(Set.of(other.id()), Optional.empty()))
+                .containsExactly(new MessageRepository.HashtagCount("склад", 1));
+    }
+
+    private List<io.github.dmytroha.tgconnector.domain.message.Message> searchTags(Set<String> any, Set<String> excluded) {
+        return messages.search(new MessageCriteria(Optional.empty(), Set.of(), Optional.empty(), any, excluded, 50));
     }
 
     private List<io.github.dmytroha.tgconnector.domain.message.Message> search(

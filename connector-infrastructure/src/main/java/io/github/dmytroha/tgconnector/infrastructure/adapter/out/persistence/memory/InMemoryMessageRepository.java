@@ -9,12 +9,16 @@ import io.github.dmytroha.tgconnector.domain.source.TelegramMessageId;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.stream.Collectors;
 
 /**
  * Driven adapter: non-durable storage, good enough for the template. Messages are indexed per source
@@ -43,6 +47,20 @@ class InMemoryMessageRepository implements MessageRepository {
     public List<Message> findLatestBySource(SourceId sourceId, int limit) {
         var messages = bySource.get(sourceId);
         return messages == null ? List.of() : messages.values().stream().limit(limit).toList();
+    }
+
+    @Override
+    public List<HashtagCount> countHashtags(Set<SourceId> sourceIds, Optional<Instant> postedFrom) {
+        return bySource.entrySet().stream()
+                .filter(entry -> sourceIds.isEmpty() || sourceIds.contains(entry.getKey()))
+                .flatMap(entry -> entry.getValue().values().stream())
+                .filter(m -> postedFrom.map(from -> !m.postedAt().isBefore(from)).orElse(true))
+                .flatMap(m -> m.content().hashtags().stream())
+                .collect(Collectors.groupingBy(tag -> tag, Collectors.counting()))
+                .entrySet().stream()
+                .map(e -> new HashtagCount(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingLong(HashtagCount::messages).reversed().thenComparing(HashtagCount::hashtag))
+                .toList();
     }
 
     @Override
