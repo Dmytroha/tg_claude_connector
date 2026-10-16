@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -61,8 +62,12 @@ class TelegramMcpTools {
                       Long lastReadMessageId, String link) {
     }
 
+    /**
+     * @param media media summary such as {@code "PHOTO"} or {@code "VIDEO ×4"}; with full URLs only on request,
+     *              because Telegram CDN links are long and expire
+     */
     record MessageInfo(String source, long messageId, Instant postedAt, String author, String text,
-                       List<String> attachments, String link) {
+                       List<String> hashtags, List<String> media, String link) {
     }
 
     @McpTool(name = "list_sources",
@@ -80,16 +85,27 @@ class TelegramMcpTools {
             description = """
                     Get the latest messages of one Telegram source, newest first. Use it for questions \
                     like "what's new in @channel". Messages are only those collected since the source \
-                    was added; call refresh_sources first if the user needs the very latest posts.""",
+                    was added; call refresh_sources first if the user needs the very latest posts. \
+                    Pass exclude_hashtags ["реклама"] to skip ads in channels that tag them.""",
             annotations = @McpAnnotations(title = "Recent messages of a source", readOnlyHint = true,
                     destructiveHint = false, idempotentHint = true, openWorldHint = false))
     List<MessageInfo> getRecentMessages(
             @McpToolParam(description = "Source reference from list_sources, e.g. \"@durov\", or its id")
             String source,
             @McpToolParam(description = "Maximum number of messages, 1-500. Default 20.", required = false)
-            Integer limit) {
+            Integer limit,
+            @McpToolParam(description = "Skip messages with any of these hashtags, e.g. [\"реклама\"]. Optional.",
+                    required = false)
+            List<String> exclude_hashtags,
+            @McpToolParam(description = "Include full media URLs (long, expire after a while). Default false.",
+                    required = false)
+            Boolean include_media_urls) {
         var view = resolve(source);
-        return toInfos(queryMessages.latest(view.id(), limitOrDefault(limit)), Map.of(view.id(), view));
+        var messages = exclude_hashtags == null || exclude_hashtags.isEmpty()
+                ? queryMessages.latest(view.id(), limitOrDefault(limit))
+                : searchMessages.search(new SearchMessagesQuery(null, List.of(view.id()), null, List.of(),
+                        exclude_hashtags, limitOrDefault(limit)));
+        return toInfos(messages, Map.of(view.id(), view), Boolean.TRUE.equals(include_media_urls));
     }
 
     @McpTool(name = "search_messages",
@@ -97,7 +113,9 @@ class TelegramMcpTools {
                     Search collected Telegram messages across all sources (or the given ones), newest \
                     first. Text matching is a case-insensitive substring match, not semantic search: \
                     search for a distinctive word or word stem (e.g. "выбор" matches "выборы", "выборах"). \
-                    Leave `query` empty to list everything posted since a date, e.g. for a daily digest.""",
+                    Leave `query` empty to list everything posted since a date, e.g. for a daily digest. \
+                    Many channels label posts with hashtags (see list_hashtags): filter by them with \
+                    `hashtags`, and skip ads with exclude_hashtags ["реклама"].""",
             annotations = @McpAnnotations(title = "Search Telegram messages", readOnlyHint = true,
                     destructiveHint = false, idempotentHint = true, openWorldHint = false))
     List<MessageInfo> searchMessages(
@@ -111,11 +129,38 @@ class TelegramMcpTools {
                     "2026-10-08" or "2026-10-08T09:00:00Z". Optional.""", required = false)
             String since,
             @McpToolParam(description = "Maximum number of messages, 1-500. Default 20.", required = false)
-            Integer limit) {
+            Integer limit,
+            @McpToolParam(description = "Only messages with at least one of these hashtags, e.g. [\"склад\"]. Optional.",
+                    required = false)
+            List<String> hashtags,
+            @McpToolParam(description = "Skip messages with any of these hashtags, e.g. [\"реклама\"]. Optional.",
+                    required = false)
+            List<String> exclude_hashtags,
+            @McpToolParam(description = "Include full media URLs (long, expire after a while). Default false.",
+                    required = false)
+            Boolean include_media_urls) {
         var all = querySources.findAll().stream().collect(Collectors.toMap(SourceView::id, Function.identity()));
-        var ids = sources == null ? List.<UUID>of() : sources.stream().map(s -> resolve(s).id()).toList();
-        var found = searchMessages.search(new SearchMessagesQuery(query, ids, parseSince(since), limitOrDefault(limit)));
-        return toInfos(found, all);
+        var ids = sourceIds(sources);
+        var found = searchMessages.search(new SearchMessagesQuery(query, ids, parseSince(since),
+                hashtags == null ? List.of() : hashtags, exclude_hashtags == null ? List.of() : exclude_hashtags,
+                limitOrDefault(limit)));
+        return toInfos(found, all, Boolean.TRUE.equals(include_media_urls));
+    }
+
+    @McpTool(name = "list_hashtags",
+            description = """
+                    List the hashtags used in collected messages with how many messages carry each, most used \
+                    first. Channels use hashtags as categories (e.g. #склад, #ресторан, #реклама): call this to \
+                    see which categories exist before filtering search_messages by them.""",
+            annotations = @McpAnnotations(title = "Hashtags in use", readOnlyHint = true,
+                    destructiveHint = false, idempotentHint = true, openWorldHint = false))
+    List<SearchMessagesUseCase.HashtagView> listHashtags(
+            @McpToolParam(description = "Source references or ids. Optional: all sources by default.", required = false)
+            List<String> sources,
+            @McpToolParam(description = "Only messages posted at or after this moment, ISO-8601 in UTC. Optional.",
+                    required = false)
+            String since) {
+        return searchMessages.hashtags(sourceIds(sources), parseSince(since));
     }
 
     @McpTool(name = "add_source",
@@ -156,6 +201,10 @@ class TelegramMcpTools {
                     destructiveHint = false, idempotentHint = true, openWorldHint = true))
     PollReport refreshSources() {
         return pollChannels.pollAll();
+    }
+
+    private List<UUID> sourceIds(List<String> sources) {
+        return sources == null ? List.of() : sources.stream().map(s -> resolve(s).id()).toList();
     }
 
     private SourceView resolve(String source) {
@@ -208,14 +257,26 @@ class TelegramMcpTools {
                 s.lastReadMessageId(), channelLink(s.reference(), null));
     }
 
-    private static List<MessageInfo> toInfos(List<MessageView> messages, Map<UUID, SourceView> sources) {
+    private static List<MessageInfo> toInfos(List<MessageView> messages, Map<UUID, SourceView> sources,
+                                             boolean mediaUrls) {
         return messages.stream().map(m -> {
             var source = sources.get(m.sourceId());
             var reference = source == null ? m.sourceId().toString() : source.reference();
-            var attachments = m.attachments().stream().map(a -> a.kind() + ": " + a.reference()).toList();
-            return new MessageInfo(reference, m.messageId(), m.postedAt(), m.author(), m.text(), attachments,
-                    channelLink(reference, m.messageId()));
+            return new MessageInfo(reference, m.messageId(), m.postedAt(), m.author(), m.text(), m.hashtags(),
+                    media(m.attachments(), mediaUrls), channelLink(reference, m.messageId()));
         }).toList();
+    }
+
+    /** {@code ["PHOTO", "VIDEO ×4"]}, or one {@code "KIND: url"} entry per attachment when URLs are requested. */
+    static List<String> media(List<MessageView.AttachmentView> attachments, boolean urls) {
+        if (urls) {
+            return attachments.stream().map(a -> a.kind() + ": " + a.reference()).toList();
+        }
+        return attachments.stream()
+                .collect(Collectors.groupingBy(MessageView.AttachmentView::kind, LinkedHashMap::new, Collectors.counting()))
+                .entrySet().stream()
+                .map(e -> e.getValue() == 1 ? e.getKey() : e.getKey() + " ×" + e.getValue())
+                .toList();
     }
 
     /**

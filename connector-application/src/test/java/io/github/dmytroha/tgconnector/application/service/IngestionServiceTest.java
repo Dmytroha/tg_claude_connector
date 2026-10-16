@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -125,6 +126,10 @@ class IngestionServiceTest {
             return store.values().stream().filter(m -> m.id().sourceId().equals(sourceId))
                     .sorted(Comparator.comparing((Message m) -> m.id().telegramMessageId()).reversed())
                     .limit(limit).toList();
+        }
+
+        public List<HashtagCount> countHashtags(Set<SourceId> sourceIds, Optional<Instant> postedFrom) {
+            return List.of();
         }
 
         public List<Message> search(MessageCriteria criteria) {

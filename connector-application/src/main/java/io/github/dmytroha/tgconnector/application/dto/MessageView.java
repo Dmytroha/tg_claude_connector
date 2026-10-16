@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 public record MessageView(UUID sourceId, long messageId, String text, List<AttachmentView> attachments,
-                          String author, Instant postedAt, Instant receivedAt) {
+                          List<String> hashtags, String author, Instant postedAt, Instant receivedAt) {
 
     public record AttachmentView(String kind, String reference) {
     }
@@ -20,6 +20,7 @@ public record MessageView(UUID sourceId, long messageId, String text, List<Attac
                 message.content().attachments().stream()
                         .map(a -> new AttachmentView(a.kind().name(), a.reference()))
                         .toList(),
+                List.copyOf(message.content().hashtags()),
                 message.author().displayName(),
                 message.postedAt(),
                 message.receivedAt());

@@ -2,7 +2,10 @@ package io.github.dmytroha.tgconnector.domain.message;
 
 import io.github.dmytroha.tgconnector.domain.source.SourceId;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 public interface MessageRepository {
 
@@ -22,4 +25,15 @@ public interface MessageRepository {
      * Messages matching the criteria, newest first (by posting time).
      */
     List<Message> search(MessageCriteria criteria);
+
+    /**
+     * How many messages carry each hashtag, most used first.
+     *
+     * @param sourceIds  restrict to these sources; empty — all sources
+     * @param postedFrom only messages posted at or after this moment
+     */
+    List<HashtagCount> countHashtags(Set<SourceId> sourceIds, Optional<Instant> postedFrom);
+
+    record HashtagCount(String hashtag, long messages) {
+    }
 }

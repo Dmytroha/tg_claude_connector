@@ -71,7 +71,7 @@ class McpServerTest {
         var tools = post(session, """
                 {"jsonrpc":"2.0","id":2,"method":"tools/list"}""");
         assertThat(tools.body()).contains("list_sources", "get_recent_messages", "search_messages",
-                "add_source", "pause_source", "resume_source", "refresh_sources");
+                "add_source", "pause_source", "resume_source", "refresh_sources", "list_hashtags");
 
         var added = post(session, """
                 {"jsonrpc":"2.0","id":3,"method":"tools/call",

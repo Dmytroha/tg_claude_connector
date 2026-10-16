@@ -20,7 +20,8 @@ spring:
           Reads Telegram public channels and chats where the connector's bot is a member.
           Messages are collected continuously from the moment a source is added; there is no older history.
           Start with list_sources, then use get_recent_messages or search_messages.
-          Include post links when you cite messages.
+          Channels often tag posts with hashtags (list_hashtags shows them); use them to filter, and
+          exclude_hashtags ["реклама"] to skip ads. Include post links when you cite messages.
 
 server:
   port: ${PORT:8080}
