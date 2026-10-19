@@ -243,6 +243,12 @@ class IngestionServiceTest {
             return List.of();
         }
 
+        public int deletePostedBefore(Instant cutoff) {
+            var before = store.size();
+            store.values().removeIf(m -> m.postedAt().isBefore(cutoff));
+            return before - store.size();
+        }
+
         public List<Message> search(MessageCriteria criteria) {
             return store.values().stream().filter(criteria::matches)
                     .sorted(Comparator.comparing(Message::postedAt).reversed())

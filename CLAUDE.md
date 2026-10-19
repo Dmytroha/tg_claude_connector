@@ -49,6 +49,9 @@ Key decisions:
   plus on demand: `get_recent_messages`, `search_messages` and `list_hashtags` poll first if the last poll is older
   than `max-age` (1h). One poll reads `?after=<cursor>` pages until caught up (max 10 per channel), since
   the web preview returns only ~20 posts per page.
+- Retention: `MessageRetentionScheduler` deletes messages with `posted_at` older than `connector.retention.max-age`
+  (90d, `CONNECTOR_RETENTION_MAX_AGE`) daily at 04:30 Europe/Prague. Read cursors stay, so deleted posts are not
+  fetched again.
 - Security (`infrastructure.security`):
   - the connector is its own authorization server, and Claude is the only static client (`claude` plus
     `MCP_OAUTH_CLIENT_SECRET`), so there is no DCR/CIMD;
@@ -106,7 +109,6 @@ session refresh only after the connector reconnects.
 
 - Daily digest sent by the bot to Telegram, composed by Claude (Claude API).
 - Semantic search (pgvector embeddings) instead of substring matching.
-- Retention: delete old messages.
 - History backfill / private channels via MTProto (TDLib): another `ChannelFeedPort` implementation.
 - Production-grade auth: DCR or CIMD, more users.
 - Optionally require the **Docker image** and **Secret scan** checks on `dev` as well.

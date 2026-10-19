@@ -18,7 +18,8 @@ spring:
         version: 0.1.0
         instructions: >
           Reads Telegram public channels and chats where the connector's bot is a member.
-          Messages are collected from the moment a source is added; there is no older history. Channels
+          Messages are collected from the moment a source is added and kept for a limited time (90 days by
+          default); there is no older history. Channels
           are polled a few times a day, and reading tools refresh them first if the last poll is over an hour old.
           Start with list_sources, then use get_recent_messages or search_messages.
           Channels often tag posts with hashtags (list_hashtags shows them); use them to filter, and
@@ -49,6 +50,13 @@ connector:
       # entered in claude.ai when adding the connector (Advanced settings → OAuth Client ID / Secret)
       client-id: ${MCP_OAUTH_CLIENT_ID:claude}
       client-secret: ${MCP_OAUTH_CLIENT_SECRET:}
+  retention:
+    enabled: true
+    # messages posted longer ago than this are deleted (e.g. 30d, 90d, 365d)
+    max-age: ${CONNECTOR_RETENTION_MAX_AGE:90d}
+    # daily clean-up (Spring cron: second minute hour day month weekday)
+    cron: 0 30 4 * * *
+    zone: Europe/Prague
   # postgres (default) or memory: non-durable, for quick local runs and tests (profile "memory")
   persistence: postgres
   telegram:

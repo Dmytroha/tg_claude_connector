@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 
 /**
  * Driven adapter: non-durable storage, good enough for the template. Messages are indexed per source
- * and ordered by id, so reading the latest page costs O(limit); search scans everything. Nothing is ever evicted.
+ * and ordered by id, so reading the latest page costs O(limit); search scans everything.
  */
 @Repository
 @ConditionalOnProperty(prefix = "connector", name = "persistence", havingValue = "memory")
@@ -61,6 +61,19 @@ class InMemoryMessageRepository implements MessageRepository {
                 .map(e -> new HashtagCount(e.getKey(), e.getValue()))
                 .sorted(Comparator.comparingLong(HashtagCount::messages).reversed().thenComparing(HashtagCount::hashtag))
                 .toList();
+    }
+
+    @Override
+    public int deletePostedBefore(Instant cutoff) {
+        var deleted = 0;
+        for (var messages : bySource.values()) {
+            for (var message : messages.values()) {
+                if (message.postedAt().isBefore(cutoff) && messages.remove(message.id().telegramMessageId(), message)) {
+                    deleted++;
+                }
+            }
+        }
+        return deleted;
     }
 
     @Override

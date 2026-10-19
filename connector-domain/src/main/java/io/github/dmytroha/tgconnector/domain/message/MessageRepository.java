@@ -34,6 +34,13 @@ public interface MessageRepository {
      */
     List<HashtagCount> countHashtags(Set<SourceId> sourceIds, Optional<Instant> postedFrom);
 
+    /**
+     * Deletes messages posted before {@code cutoff}.
+     *
+     * @return how many messages were deleted
+     */
+    int deletePostedBefore(Instant cutoff);
+
     record HashtagCount(String hashtag, long messages) {
     }
 }

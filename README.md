@@ -86,6 +86,9 @@ docker compose up -d --build
 | `connector.telegram.polling.cron` / `CONNECTOR_POLLING_CRON` | `0 0 7,13,19 * * *` | расписание опроса (Spring cron, `-` выключает) |
 | `connector.telegram.polling.zone` / `CONNECTOR_POLLING_ZONE` | `Europe/Prague` | часовой пояс расписания |
 | `connector.telegram.polling.max-age` / `CONNECTOR_POLLING_MAX_AGE` | `1h` | инструменты чтения MCP сначала опрашивают каналы, если последний опрос старше этого |
+| `connector.retention.enabled` | `true` | удалять старые сообщения |
+| `connector.retention.max-age` / `CONNECTOR_RETENTION_MAX_AGE` | `90d` | сообщения, опубликованные раньше этого срока, удаляются |
+| `connector.retention.cron` / `.zone` | `0 30 4 * * *` / `Europe/Prague` | когда удалять (раз в сутки, ночью) |
 
 Чтобы бот получал посты канала, добавьте его администратором канала. Чтобы видел все сообщения
 в группе, отключите privacy mode в @BotFather (`/setprivacy`).

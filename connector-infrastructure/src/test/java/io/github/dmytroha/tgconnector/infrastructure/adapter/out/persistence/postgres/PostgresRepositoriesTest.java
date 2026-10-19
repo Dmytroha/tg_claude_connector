@@ -175,6 +175,25 @@ class PostgresRepositoriesTest {
                 .containsExactly(new MessageRepository.HashtagCount("склад", 1));
     }
 
+    @Test
+    void deletesMessagesPostedBeforeCutoff() {
+        var channel = sources.save(Source.register(ChatReference.parse("@jobs"), null, clock));
+        List.of(
+                channel.accept(new TelegramMessageId(1), MessageContent.text("old"), null,
+                        Instant.parse("2026-07-01T00:00:00Z"), clock),
+                channel.accept(new TelegramMessageId(2), MessageContent.text("at cutoff"), null,
+                        Instant.parse("2026-07-11T08:00:00Z"), clock),
+                channel.accept(new TelegramMessageId(3), MessageContent.text("new"), null,
+                        Instant.parse("2026-10-09T07:00:00Z"), clock))
+                .forEach(m -> messages.save(m.orElseThrow()));
+
+        var deleted = messages.deletePostedBefore(Instant.parse("2026-07-11T08:00:00Z"));
+
+        assertThat(deleted).isEqualTo(1);
+        assertThat(messages.findLatestBySource(channel.id(), 10)).extracting(m -> m.id().telegramMessageId().value())
+                .containsExactly(3L, 2L);
+    }
+
     private List<io.github.dmytroha.tgconnector.domain.message.Message> searchTags(Set<String> any, Set<String> excluded) {
         return messages.search(new MessageCriteria(Optional.empty(), Set.of(), Optional.empty(), any, excluded, 50));
     }

@@ -5,6 +5,7 @@ import io.github.dmytroha.tgconnector.application.port.out.DomainEventPublisher;
 import io.github.dmytroha.tgconnector.application.service.IngestionPolicy;
 import io.github.dmytroha.tgconnector.application.service.IngestionService;
 import io.github.dmytroha.tgconnector.application.service.MessageQueryService;
+import io.github.dmytroha.tgconnector.application.service.MessageRetentionService;
 import io.github.dmytroha.tgconnector.application.service.SourceService;
 import io.github.dmytroha.tgconnector.domain.message.MessageRepository;
 import io.github.dmytroha.tgconnector.domain.source.SourceRepository;
@@ -45,5 +46,10 @@ class UseCaseConfiguration {
     @Bean
     MessageQueryService messageQueryService(SourceRepository sources, MessageRepository messages) {
         return new MessageQueryService(sources, messages);
+    }
+
+    @Bean
+    MessageRetentionService messageRetentionService(MessageRepository messages, Clock clock) {
+        return new MessageRetentionService(messages, clock);
     }
 }
