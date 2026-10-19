@@ -18,7 +18,8 @@ spring:
         version: 0.1.0
         instructions: >
           Reads Telegram public channels and chats where the connector's bot is a member.
-          Messages are collected continuously from the moment a source is added; there is no older history.
+          Messages are collected from the moment a source is added; there is no older history. Channels
+          are polled a few times a day, and reading tools refresh them first if the last poll is over an hour old.
           Start with list_sources, then use get_recent_messages or search_messages.
           Channels often tag posts with hashtags (list_hashtags shows them); use them to filter, and
           exclude_hashtags ["реклама"] to skip ads. Include post links when you cite messages.
@@ -63,4 +64,8 @@ connector:
       timeout: 10s
     polling:
       enabled: true
-      interval: 60s
+      # scheduled polls (Spring cron: second minute hour day month weekday; "-" disables them)
+      cron: ${CONNECTOR_POLLING_CRON:0 0 7,13,19 * * *}
+      zone: ${CONNECTOR_POLLING_ZONE:Europe/Prague}
+      # reading messages through MCP polls first if the last poll is older than this
+      max-age: ${CONNECTOR_POLLING_MAX_AGE:1h}

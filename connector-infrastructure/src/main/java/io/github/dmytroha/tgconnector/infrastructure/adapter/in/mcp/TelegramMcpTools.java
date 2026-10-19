@@ -12,11 +12,15 @@ import io.github.dmytroha.tgconnector.application.port.in.RegisterSourceUseCase.
 import io.github.dmytroha.tgconnector.application.port.in.SearchMessagesUseCase;
 import io.github.dmytroha.tgconnector.application.port.in.SearchMessagesUseCase.SearchMessagesQuery;
 import io.github.dmytroha.tgconnector.domain.source.ChatReference;
+import io.github.dmytroha.tgconnector.infrastructure.config.TelegramProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpTool.McpAnnotations;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -34,10 +38,14 @@ import java.util.stream.Collectors;
  * <p>
  * Tool results are plain records serialized to JSON. Errors are thrown as exceptions with a message
  * written for the model: the MCP server returns them as tool errors Claude can react to.
+ * <p>
+ * Channels are polled only a few times a day, so the reading tools first poll them if the last poll is
+ * older than {@code connector.telegram.polling.max-age}.
  */
 @Component
 class TelegramMcpTools {
 
+    private static final Logger log = LoggerFactory.getLogger(TelegramMcpTools.class);
     private static final int DEFAULT_LIMIT = 20;
 
     private final QuerySourcesUseCase querySources;
@@ -46,16 +54,19 @@ class TelegramMcpTools {
     private final QueryMessagesUseCase queryMessages;
     private final SearchMessagesUseCase searchMessages;
     private final PollChannelsUseCase pollChannels;
+    private final Duration maxPollAge;
 
     TelegramMcpTools(QuerySourcesUseCase querySources, RegisterSourceUseCase registerSource,
                      ManageSourceUseCase manageSource, QueryMessagesUseCase queryMessages,
-                     SearchMessagesUseCase searchMessages, PollChannelsUseCase pollChannels) {
+                     SearchMessagesUseCase searchMessages, PollChannelsUseCase pollChannels,
+                     TelegramProperties properties) {
         this.querySources = querySources;
         this.registerSource = registerSource;
         this.manageSource = manageSource;
         this.queryMessages = queryMessages;
         this.searchMessages = searchMessages;
         this.pollChannels = pollChannels;
+        this.maxPollAge = properties.polling().maxAge();
     }
 
     record SourceInfo(String id, String reference, String title, String kind, String status,
@@ -72,8 +83,8 @@ class TelegramMcpTools {
 
     @McpTool(name = "list_sources",
             description = """
-                    List the Telegram sources the connector reads: public channels (polled every minute) \
-                    and chats where the connector's bot is a member. Call this first to learn which \
+                    List the Telegram sources the connector reads: public channels (polled a few times a \
+                    day and before reads when the last poll is over an hour old) and chats where the connector's bot is a member. Call this first to learn which \
                     channels exist and their references, which other tools accept as `source`.""",
             annotations = @McpAnnotations(title = "List Telegram sources", readOnlyHint = true,
                     destructiveHint = false, idempotentHint = true, openWorldHint = false))
@@ -85,7 +96,8 @@ class TelegramMcpTools {
             description = """
                     Get the latest messages of one Telegram source, newest first. Use it for questions \
                     like "what's new in @channel". Messages are only those collected since the source \
-                    was added; call refresh_sources first if the user needs the very latest posts. \
+                    was added. Channels are refreshed automatically when the last poll is over an hour \
+                    old; call refresh_sources first only if the user needs posts from the last minutes. \
                     Pass exclude_hashtags ["реклама"] to skip ads in channels that tag them.""",
             annotations = @McpAnnotations(title = "Recent messages of a source", readOnlyHint = true,
                     destructiveHint = false, idempotentHint = true, openWorldHint = false))
@@ -101,6 +113,7 @@ class TelegramMcpTools {
                     required = false)
             Boolean include_media_urls) {
         var view = resolve(source);
+        refreshIfStale();
         var messages = exclude_hashtags == null || exclude_hashtags.isEmpty()
                 ? queryMessages.latest(view.id(), limitOrDefault(limit))
                 : searchMessages.search(new SearchMessagesQuery(null, List.of(view.id()), null, List.of(),
@@ -139,8 +152,9 @@ class TelegramMcpTools {
             @McpToolParam(description = "Include full media URLs (long, expire after a while). Default false.",
                     required = false)
             Boolean include_media_urls) {
-        var all = querySources.findAll().stream().collect(Collectors.toMap(SourceView::id, Function.identity()));
         var ids = sourceIds(sources);
+        refreshIfStale();
+        var all = querySources.findAll().stream().collect(Collectors.toMap(SourceView::id, Function.identity()));
         var found = searchMessages.search(new SearchMessagesQuery(query, ids, parseSince(since),
                 hashtags == null ? List.of() : hashtags, exclude_hashtags == null ? List.of() : exclude_hashtags,
                 limitOrDefault(limit)));
@@ -160,7 +174,10 @@ class TelegramMcpTools {
             @McpToolParam(description = "Only messages posted at or after this moment, ISO-8601 in UTC. Optional.",
                     required = false)
             String since) {
-        return searchMessages.hashtags(sourceIds(sources), parseSince(since));
+        var ids = sourceIds(sources);
+        var from = parseSince(since);
+        refreshIfStale();
+        return searchMessages.hashtags(ids, from);
     }
 
     @McpTool(name = "add_source",
@@ -195,12 +212,21 @@ class TelegramMcpTools {
 
     @McpTool(name = "refresh_sources",
             description = """
-                    Fetch new posts from all active public channels right now instead of waiting for \
-                    the next scheduled poll (once a minute). Chats read by the bot are always up to date.""",
+                    Fetch new posts from all active public channels right now. Reading tools already \
+                    refresh channels whose last poll is over an hour old, so call this only when the user \
+                    needs posts from the last minutes. Chats read by the bot are always up to date.""",
             annotations = @McpAnnotations(title = "Refresh channels now", readOnlyHint = false,
                     destructiveHint = false, idempotentHint = true, openWorldHint = true))
     PollReport refreshSources() {
         return pollChannels.pollAll();
+    }
+
+    /**
+     * Keeps reads working when Telegram is unreachable: they then answer from what is already stored.
+     */
+    private void refreshIfStale() {
+        var report = pollChannels.pollIfOlderThan(maxPollAge);
+        report.failures().forEach(failure -> log.warn("On-demand channel polling failed: {}", failure));
     }
 
     private List<UUID> sourceIds(List<String> sources) {

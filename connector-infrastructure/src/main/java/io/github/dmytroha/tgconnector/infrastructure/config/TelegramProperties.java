@@ -28,6 +28,16 @@ public record TelegramProperties(@DefaultValue Bot bot, @DefaultValue ChannelFee
                               @DefaultValue("Mozilla/5.0 (compatible; tg-connector/0.1)") String userAgent) {
     }
 
-    public record Polling(@DefaultValue("true") boolean enabled, @DefaultValue("60s") Duration interval) {
+    /**
+     * Public channel polling: on a schedule, plus on demand when messages are read through MCP.
+     *
+     * @param cron   Spring cron expression for scheduled polls ({@code -} disables them)
+     * @param zone   time zone of {@code cron}
+     * @param maxAge MCP reads poll first if the last poll finished longer ago than this
+     */
+    public record Polling(@DefaultValue("true") boolean enabled,
+                          @DefaultValue("0 0 7,13,19 * * *") String cron,
+                          @DefaultValue("Europe/Prague") String zone,
+                          @DefaultValue("1h") Duration maxAge) {
     }
 }
