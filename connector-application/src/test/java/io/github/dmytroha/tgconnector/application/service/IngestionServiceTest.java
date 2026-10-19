@@ -21,7 +21,9 @@ import io.github.dmytroha.tgconnector.domain.source.TelegramMessageId;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -56,6 +58,91 @@ class IngestionServiceTest {
     }
 
     @Test
+    void readsPagesUntilCaughtUpWithTheChannel() {
+        var channel = Source.register(ChatReference.parse("@telegram"), null, clock);
+        sources.save(channel);
+        var requests = new ArrayList<Optional<TelegramMessageId>>();
+        ChannelFeedPort feed = (username, after) -> {
+            requests.add(after);
+            // a channel with posts 1..45, served 20 per page like the web preview
+            var from = after.map(id -> id.value() + 1).orElse(26L);
+            var to = Math.min(from + 19, 45);
+            var page = new ArrayList<IncomingMessage>();
+            for (var id = from; id <= to; id++) {
+                page.add(incoming(id));
+            }
+            return page;
+        };
+        var service = service(feed, false);
+
+        var first = service.pollAll();
+        var later = service.pollAll();
+
+        assertThat(first.messagesStored()).as("a new source only gets the latest page").isEqualTo(20);
+        assertThat(later.messagesStored()).isZero();
+        assertThat(channel.lastReadMessageId()).contains(new TelegramMessageId(45));
+        assertThat(requests).containsExactly(Optional.empty(), Optional.of(new TelegramMessageId(45)));
+    }
+
+    @Test
+    void catchesUpAfterALongPauseBetweenPolls() {
+        var channel = Source.register(ChatReference.parse("@telegram"), null, clock);
+        channel.accept(new TelegramMessageId(5), MessageContent.text("old"), Author.unknown(), clock.instant(), clock);
+        sources.save(channel);
+        ChannelFeedPort feed = (username, after) -> {
+            var from = after.orElseThrow().value() + 1;
+            var page = new ArrayList<IncomingMessage>();
+            for (var id = from; id <= Math.min(from + 19, 50); id++) {
+                page.add(incoming(id));
+            }
+            return page;
+        };
+
+        var report = service(feed, false).pollAll();
+
+        assertThat(report.messagesStored()).isEqualTo(45);
+        assertThat(channel.lastReadMessageId()).contains(new TelegramMessageId(50));
+    }
+
+    @Test
+    void stopsAfterAPageLimitPerPoll() {
+        var channel = Source.register(ChatReference.parse("@busy"), null, clock);
+        channel.accept(new TelegramMessageId(1), MessageContent.text("old"), Author.unknown(), clock.instant(), clock);
+        sources.save(channel);
+        var requests = new int[1];
+        ChannelFeedPort feed = (username, after) -> {
+            requests[0]++;
+            return List.of(incoming(after.orElseThrow().value() + 1));
+        };
+
+        service(feed, false).pollAll();
+
+        assertThat(requests[0]).isEqualTo(IngestionService.MAX_PAGES_PER_POLL);
+    }
+
+    @Test
+    void pollsOnDemandOnlyWhenTheLastPollIsTooOld() {
+        sources.save(Source.register(ChatReference.parse("@telegram"), null, clock));
+        var requests = new int[1];
+        ChannelFeedPort feed = (username, after) -> {
+            requests[0]++;
+            return List.of();
+        };
+        var now = new MutableClock(clock.instant());
+        var service = new IngestionService(sources, messages, feed, published::addAll, new IngestionPolicy(false), now);
+
+        service.pollIfOlderThan(Duration.ofHours(1));
+        now.advance(Duration.ofMinutes(59));
+        var skipped = service.pollIfOlderThan(Duration.ofHours(1));
+        now.advance(Duration.ofMinutes(2));
+        var polled = service.pollIfOlderThan(Duration.ofHours(1));
+
+        assertThat(skipped.sourcesPolled()).isZero();
+        assertThat(polled.sourcesPolled()).isEqualTo(1);
+        assertThat(requests[0]).as("first call never polled before, last one is stale").isEqualTo(2);
+    }
+
+    @Test
     void reportsFeedFailuresWithoutStoppingOtherSources() {
         sources.save(Source.register(ChatReference.parse("@broken"), null, clock));
         ChannelFeedPort feed = (username, after) -> {
@@ -83,6 +170,30 @@ class IngestionServiceTest {
 
     private IncomingMessage incoming(long id) {
         return new IncomingMessage(new TelegramMessageId(id), MessageContent.text("post " + id), Author.unknown(), clock.instant());
+    }
+
+    static class MutableClock extends Clock {
+        private Instant now;
+
+        MutableClock(Instant now) {
+            this.now = now;
+        }
+
+        void advance(Duration duration) {
+            now = now.plus(duration);
+        }
+
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        public Instant instant() {
+            return now;
+        }
     }
 
     static class FakeSources implements SourceRepository {

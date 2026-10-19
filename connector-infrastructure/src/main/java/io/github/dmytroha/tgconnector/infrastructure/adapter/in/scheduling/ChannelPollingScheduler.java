@@ -8,7 +8,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Driving adapter: periodically triggers polling of public channels.
+ * Driving adapter: polls public channels on a schedule (a few times a day by default). Between scheduled
+ * polls, MCP reads refresh stale channels on demand.
  */
 @Component
 @ConditionalOnProperty(prefix = "connector.telegram.polling", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -22,7 +23,8 @@ class ChannelPollingScheduler {
         this.pollChannels = pollChannels;
     }
 
-    @Scheduled(fixedDelayString = "${connector.telegram.polling.interval:60s}", initialDelayString = "5s")
+    @Scheduled(cron = "${connector.telegram.polling.cron:0 0 7,13,19 * * *}",
+            zone = "${connector.telegram.polling.zone:Europe/Prague}")
     void poll() {
         var report = pollChannels.pollAll();
         if (report.sourcesPolled() > 0) {

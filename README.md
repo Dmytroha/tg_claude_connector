@@ -82,7 +82,10 @@ docker compose up -d --build
 | `connector.telegram.bot.token` / `TELEGRAM_BOT_TOKEN` | — | токен бота |
 | `connector.telegram.bot.auto-register-chats` / `TELEGRAM_BOT_AUTO_REGISTER_CHATS` | `false` | автоматически регистрировать чаты, из которых пришло сообщение. По умолчанию выключено: написать боту или добавить его в группу может кто угодно, поэтому чаты лучше регистрировать через API |
 | `connector.telegram.channel-feed.base-url` | `https://t.me` | адрес веб-превью |
-| `connector.telegram.polling.enabled` / `.interval` | `true` / `60s` | расписание опроса каналов |
+| `connector.telegram.polling.enabled` | `true` | опрашивать публичные каналы |
+| `connector.telegram.polling.cron` / `CONNECTOR_POLLING_CRON` | `0 0 7,13,19 * * *` | расписание опроса (Spring cron, `-` выключает) |
+| `connector.telegram.polling.zone` / `CONNECTOR_POLLING_ZONE` | `Europe/Prague` | часовой пояс расписания |
+| `connector.telegram.polling.max-age` / `CONNECTOR_POLLING_MAX_AGE` | `1h` | инструменты чтения MCP сначала опрашивают каналы, если последний опрос старше этого |
 
 Чтобы бот получал посты канала, добавьте его администратором канала. Чтобы видел все сообщения
 в группе, отключите privacy mode в @BotFather (`/setprivacy`).
