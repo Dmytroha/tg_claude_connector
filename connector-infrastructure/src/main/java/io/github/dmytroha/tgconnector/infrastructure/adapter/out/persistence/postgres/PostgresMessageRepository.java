@@ -146,6 +146,13 @@ public class PostgresMessageRepository implements MessageRepository {
                 .list();
     }
 
+    @Override
+    public int deletePostedBefore(Instant cutoff) {
+        return jdbc.sql("DELETE FROM messages WHERE posted_at < :cutoff")
+                .param("cutoff", Timestamp.from(cutoff))
+                .update();
+    }
+
     private static String escapeLike(String text) {
         return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
