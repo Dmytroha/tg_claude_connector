@@ -1,0 +1,5 @@
+# False positives of the CI secret scan (gitleaks). One fingerprint per line: <commit>:<file>:<rule>:<line>.
+# Only for values that are not secrets; a real leaked secret must be revoked, not ignored.
+
+# Fixed test-only encryption key in SecretCipherTest, not used anywhere else
+425b05d9b38d62027818c4bdb2fcca9f7991d553:connector-infrastructure/src/test/java/io/github/dmytroha/tgconnector/infrastructure/security/SecretCipherTest.java:generic-api-key:10
