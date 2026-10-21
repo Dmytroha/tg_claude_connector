@@ -59,8 +59,12 @@ Key decisions:
   - `/mcp` and `/api/**` accept only JWTs it issued, checking issuer and audience = `<public-url>/mcp`;
   - unauthenticated calls get `401` with `WWW-Authenticate: Bearer resource_metadata=...`; the protected resource
     metadata is at `/.well-known/oauth-protected-resource[/mcp]`;
-  - users sign in with GitHub, and only `GITHUB_ALLOWED_LOGINS` are let in;
-  - the signing key and authorizations are stored in PostgreSQL;
+  - users sign in with GitHub; only `GITHUB_ALLOWED_IDS` (numeric ids) are let in, or `GITHUB_ALLOWED_LOGINS`
+    when no ids are set;
+  - the signing key and authorizations are stored in PostgreSQL, encrypted with `CONNECTOR_ENCRYPTION_KEY`
+    (`SecretCipher`, deterministic AES-GCM so tokens can still be looked up; `EncryptingAuthorizationService`
+    wraps the stock JDBC service). Plaintext rows are encrypted on startup. Never change the key;
+  - the signing key rotates every 30 days; the previous key verifies tokens for one access token lifetime;
   - token claims go through `JdbcOAuth2AuthorizationService` JSON: use mutable `ArrayList`, never `List.of(...)`,
     or reading them back fails on refresh.
 - This setup is marked by the owner as **temporary, for development**.
@@ -93,7 +97,8 @@ Key decisions:
   - `DB_URL`, `DB_USER`, `DB_PASSWORD`, which reference Postgres (`${{Postgres.PGHOST}}` etc.);
   - `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` from the GitHub OAuth App, callback
     `<public-url>/login/oauth2/code/github`;
-  - `GITHUB_ALLOWED_LOGINS=Dmytroha`;
+  - `GITHUB_ALLOWED_IDS=58972635` (Dmytroha); `GITHUB_ALLOWED_LOGINS=Dmytroha` as the fallback;
+  - `CONNECTOR_ENCRYPTION_KEY`;
   - `MCP_OAUTH_CLIENT_SECRET`.
 - Railway applies variable changes only after **Apply changes** / **Deploy** on the staged-changes banner.
 - The sandbox cannot reach `*.up.railway.app` or `t.me` directly.

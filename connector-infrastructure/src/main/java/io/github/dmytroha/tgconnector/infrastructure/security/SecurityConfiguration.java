@@ -1,5 +1,6 @@
 package io.github.dmytroha.tgconnector.infrastructure.security;
 
+import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
@@ -36,7 +37,6 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
-import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
@@ -52,6 +52,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -115,12 +116,17 @@ class SecurityConfiguration {
                 .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
         var github = properties.github();
         if (github.configured()) {
-            var userService = new AllowedGitHubUserService(new DefaultOAuth2UserService(), github.allowedLogins());
+            var allowedIds = github.parsedAllowedIds();
+            var userService = new AllowedGitHubUserService(new DefaultOAuth2UserService(), github.allowedLogins(),
+                    allowedIds);
             http.oauth2Login(login -> login
                     .userInfoEndpoint(userInfo -> userInfo.userService(userService))
                     .failureHandler((request, response, e) -> response.sendError(403, e.getMessage())));
-            if (github.allowedLogins().stream().allMatch(String::isBlank)) {
-                log.warn("connector.security.github.allowed-logins is empty: nobody can sign in");
+            if (allowedIds.isEmpty() && !github.hasAllowedLogins()) {
+                log.warn("connector.security.github.allowed-ids and allowed-logins are empty: nobody can sign in");
+            } else if (allowedIds.isEmpty()) {
+                log.warn("Users are allowed by GitHub login. Set GITHUB_ALLOWED_IDS to their numeric ids instead: "
+                        + "a renamed login can be taken by someone else");
             }
         } else {
             log.warn("GitHub sign-in is not configured (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET): "
@@ -188,13 +194,30 @@ class SecurityConfiguration {
     }
 
     @Bean
-    JWKSource<SecurityContext> jwkSource(SigningKeys keys) {
-        return (selector, context) -> selector.select(new JWKSet(keys.current()));
+    SecretCipher secretCipher(SecurityProperties properties) {
+        var key = properties.encryptionKey();
+        if (key == null || key.isBlank()) {
+            log.warn("connector.security.encryption-key (CONNECTOR_ENCRYPTION_KEY) is not set: "
+                    + "the token signing key and issued tokens are stored unencrypted");
+            return SecretCipher.disabled();
+        }
+        return SecretCipher.fromSecret(key);
     }
 
+    /**
+     * Verification keys: published at the JWK set endpoint and used to check tokens.
+     */
     @Bean
-    JwtEncoder jwtEncoder(JWKSource<SecurityContext> jwkSource) {
-        return new NimbusJwtEncoder(jwkSource);
+    JWKSource<SecurityContext> jwkSource(SigningKeys keys) {
+        return (selector, context) -> selector.select(new JWKSet(List.<JWK>copyOf(keys.verificationKeys())));
+    }
+
+    /**
+     * Signs with the current key only: with several keys to choose from the encoder would refuse to sign.
+     */
+    @Bean
+    JwtEncoder jwtEncoder(SigningKeys keys) {
+        return new NimbusJwtEncoder((selector, context) -> selector.select(new JWKSet(keys.current())));
     }
 
     /**
@@ -234,13 +257,17 @@ class SecurityConfiguration {
     static class Durable {
 
         @Bean
-        SigningKeys signingKeys(JdbcClient jdbc) {
-            return new SigningKeys.Jdbc(jdbc);
+        SigningKeys signingKeys(JdbcClient jdbc, SecretCipher cipher, Clock clock, SecurityProperties properties) {
+            return new SigningKeys.Jdbc(jdbc, cipher, clock, properties.signingKey().rotationPeriod(),
+                    properties.tokens().accessTokenTtl());
         }
 
         @Bean
-        OAuth2AuthorizationService authorizationService(JdbcTemplate jdbc, RegisteredClientRepository clients) {
-            return new JdbcOAuth2AuthorizationService(jdbc, clients);
+        OAuth2AuthorizationService authorizationService(JdbcTemplate jdbc, RegisteredClientRepository clients,
+                                                        SecretCipher cipher) {
+            var service = new EncryptingAuthorizationService(jdbc, clients, cipher);
+            service.encryptStoredTokens();
+            return service;
         }
     }
 
