@@ -144,6 +144,10 @@ docker compose up -d --build
    обновлении выдаётся новый.
 
 Ключ подписи и выданные токены хранятся в PostgreSQL, поэтому деплой не разлогинивает Claude.
+С `CONNECTOR_ENCRYPTION_KEY` они хранятся зашифрованными (AES-256-GCM), так что копия базы не даёт
+рабочих токенов. Ключ подписи меняется раз в 30 дней (`connector.security.signing-key.rotation-period`),
+прежний принимается ещё час, пока не истекут подписанные им токены. Если ключ шифрования потерян,
+удалите строки из `oauth2_signing_key` и `oauth2_authorization` и подключите коннектор в Claude заново.
 
 **Настройка:**
 
@@ -151,7 +155,9 @@ docker compose up -d --build
    - Homepage URL: `https://<домен>`
    - Authorization callback URL: `https://<домен>/login/oauth2/code/github`
 2. Задайте переменные (см. `.env.example`): `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
-   `GITHUB_ALLOWED_LOGINS`, `MCP_OAUTH_CLIENT_SECRET` (любая длинная случайная строка).
+   `GITHUB_ALLOWED_IDS` (числовые id пользователей GitHub: `https://api.github.com/users/<логин>` → `id`;
+   надёжнее логинов, которые можно переименовать), `MCP_OAUTH_CLIENT_SECRET` (любая длинная случайная строка)
+   и `CONNECTOR_ENCRYPTION_KEY` (случайная строка от 32 символов, не меняйте её потом).
    Публичный адрес на Railway берётся из `RAILWAY_PUBLIC_DOMAIN`, в других местах — `CONNECTOR_PUBLIC_URL`.
 3. В claude.ai: **Add custom connector** → URL `https://<домен>/mcp` → **Advanced settings** →
    OAuth Client ID `claude` и OAuth Client Secret = `MCP_OAUTH_CLIENT_SECRET`.

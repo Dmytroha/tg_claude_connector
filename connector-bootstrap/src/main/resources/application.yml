@@ -44,8 +44,15 @@ connector:
       # GitHub OAuth App (Settings → Developer settings → OAuth Apps), callback: <public-url>/login/oauth2/code/github
       client-id: ${GITHUB_CLIENT_ID:}
       client-secret: ${GITHUB_CLIENT_SECRET:}
-      # comma-separated GitHub logins allowed to sign in
+      # comma-separated numeric GitHub user ids allowed to sign in (preferred: ids never change)
+      allowed-ids: ${GITHUB_ALLOWED_IDS:}
+      # comma-separated GitHub logins, checked only when allowed-ids is empty
       allowed-logins: ${GITHUB_ALLOWED_LOGINS:}
+    # encrypts the token signing key and issued tokens in the database (32+ characters; never change it)
+    encryption-key: ${CONNECTOR_ENCRYPTION_KEY:}
+    signing-key:
+      # a new token signing key replaces the current one after this long
+      rotation-period: 30d
     mcp-client:
       # entered in claude.ai when adding the connector (Advanced settings → OAuth Client ID / Secret)
       client-id: ${MCP_OAUTH_CLIENT_ID:claude}
