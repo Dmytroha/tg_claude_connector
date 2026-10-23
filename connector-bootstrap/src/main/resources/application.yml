@@ -48,7 +48,8 @@ connector:
       allowed-ids: ${GITHUB_ALLOWED_IDS:}
       # comma-separated GitHub logins, checked only when allowed-ids is empty
       allowed-logins: ${GITHUB_ALLOWED_LOGINS:}
-    # encrypts the token signing key and issued tokens in the database (32+ characters; never change it)
+    # encrypts the token signing key and issued tokens in the database (32+ characters);
+    # changing it revokes them all, and Claude has to reconnect
     encryption-key: ${CONNECTOR_ENCRYPTION_KEY:}
     signing-key:
       # a new token signing key replaces the current one after this long

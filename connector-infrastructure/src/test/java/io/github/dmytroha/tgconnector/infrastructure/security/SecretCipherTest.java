@@ -38,6 +38,10 @@ class SecretCipherTest {
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("differs");
         assertThatThrownBy(() -> SecretCipher.disabled().decrypt(encrypted))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("not set");
+        assertThat(cipher.canDecrypt(encrypted)).isTrue();
+        assertThat(cipher.canDecrypt("legacy-plaintext")).isTrue();
+        assertThat(SecretCipher.fromSecret("another-key-another-key-another-key").canDecrypt(encrypted)).isFalse();
+        assertThat(SecretCipher.disabled().canDecrypt(encrypted)).isFalse();
         assertThatThrownBy(() -> SecretCipher.fromSecret("too-short"))
                 .isInstanceOf(IllegalArgumentException.class);
     }

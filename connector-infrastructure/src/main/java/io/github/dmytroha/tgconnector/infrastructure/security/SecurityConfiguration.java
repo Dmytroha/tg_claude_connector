@@ -266,7 +266,7 @@ class SecurityConfiguration {
         OAuth2AuthorizationService authorizationService(JdbcTemplate jdbc, RegisteredClientRepository clients,
                                                         SecretCipher cipher) {
             var service = new EncryptingAuthorizationService(jdbc, clients, cipher);
-            service.encryptStoredTokens();
+            service.prepareStoredTokens();
             return service;
         }
     }

@@ -110,6 +110,23 @@ class SecretStoragePostgresTest {
     }
 
     @Test
+    void changingTheEncryptionKeyRevokesTheSigningKeyAndAllTokens() {
+        var oldCipher = SecretCipher.fromSecret("an-old-key-that-may-have-leaked-0123456789");
+        authorizations(oldCipher).save(authorization("access-1", "refresh-1"));
+        var oldKey = new SigningKeys.Jdbc(jdbc, oldCipher, clock, Duration.ofDays(30), Duration.ofHours(1)).current();
+
+        var service = authorizations(cipher);
+        service.prepareStoredTokens();
+        var keys = new SigningKeys.Jdbc(jdbc, cipher, clock, Duration.ofDays(30), Duration.ofHours(1));
+
+        assertThat(service.findByToken("refresh-1", OAuth2TokenType.REFRESH_TOKEN)).isNull();
+        assertThat(jdbc.sql("SELECT count(*) FROM oauth2_authorization").query(Long.class).single()).isZero();
+        assertThat(keys.current().getKeyID()).isNotEqualTo(oldKey.getKeyID());
+        assertThat(keys.verificationKeys()).extracting(k -> k.getKeyID()).containsExactly(keys.current().getKeyID());
+        assertThat(jdbc.sql("SELECT count(*) FROM oauth2_signing_key").query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
     void encryptsTheSigningKeyAndRotatesIt() {
         var plaintextKey = SigningKeys.generate();
         jdbc.sql("INSERT INTO oauth2_signing_key (id, jwk, created_at) VALUES ('current', :jwk, :at)")

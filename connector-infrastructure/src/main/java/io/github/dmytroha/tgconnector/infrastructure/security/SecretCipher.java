@@ -21,6 +21,9 @@ import java.util.Base64;
  * <p>
  * Values without the {@value #PREFIX} prefix are stored in plaintext (from before encryption was enabled) and are
  * returned as they are. Without a key the cipher is disabled and stores plaintext.
+ * <p>
+ * Changing the key makes everything encrypted with the old one unreadable; the stores then discard it
+ * (see {@link #canDecrypt}), which revokes the signing key and all issued tokens.
  */
 final class SecretCipher {
 
@@ -77,6 +80,22 @@ final class SecretCipher {
             return PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(out);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Cannot encrypt a secret", e);
+        }
+    }
+
+    /**
+     * Whether {@link #decrypt} would succeed: plaintext always can, encrypted values only with the key they were
+     * encrypted with.
+     */
+    boolean canDecrypt(String value) {
+        if (!isEncrypted(value)) {
+            return true;
+        }
+        try {
+            decrypt(value);
+            return true;
+        } catch (IllegalStateException e) {
+            return false;
         }
     }
 
