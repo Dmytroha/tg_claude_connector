@@ -59,7 +59,37 @@ class EncryptingAuthorizationService extends JdbcOAuth2AuthorizationService {
     }
 
     /**
-     * Encrypts token values stored before encryption was enabled. Safe to run on every start.
+     * Brings stored tokens in line with the current encryption key. Safe to run on every start.
+     */
+    void prepareStoredTokens() {
+        removeUnreadableTokens();
+        encryptStoredTokens();
+    }
+
+    /**
+     * Deletes authorizations whose tokens were encrypted with another key: changing the encryption key revokes all
+     * issued tokens, and Claude signs in again.
+     */
+    int removeUnreadableTokens() {
+        var removed = 0;
+        for (var row : getJdbcOperations().queryForList("SELECT id, " + String.join(", ", TOKEN_COLUMNS)
+                + " FROM oauth2_authorization")) {
+            var unreadable = TOKEN_COLUMNS.stream()
+                    .map(column -> asString(row.get(column)))
+                    .anyMatch(value -> value != null && !cipher.canDecrypt(value));
+            if (unreadable) {
+                removed += getJdbcOperations().update("DELETE FROM oauth2_authorization WHERE id = ?", row.get("id"));
+            }
+        }
+        if (removed > 0) {
+            log.warn("Removed {} authorization(s) whose tokens cannot be decrypted with the current encryption key; "
+                    + "clients have to sign in again", removed);
+        }
+        return removed;
+    }
+
+    /**
+     * Encrypts token values stored before encryption was enabled.
      */
     int encryptStoredTokens() {
         if (!cipher.enabled()) {

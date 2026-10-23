@@ -63,7 +63,8 @@ Key decisions:
     when no ids are set;
   - the signing key and authorizations are stored in PostgreSQL, encrypted with `CONNECTOR_ENCRYPTION_KEY`
     (`SecretCipher`, deterministic AES-GCM so tokens can still be looked up; `EncryptingAuthorizationService`
-    wraps the stock JDBC service). Plaintext rows are encrypted on startup. Never change the key;
+    wraps the stock JDBC service). Plaintext rows are encrypted on startup. Changing the key revokes everything:
+    rows that do not decrypt with it are deleted on startup and a new signing key is created (Claude reconnects);
   - the signing key rotates every 30 days; the previous key verifies tokens for one access token lifetime;
   - token claims go through `JdbcOAuth2AuthorizationService` JSON: use mutable `ArrayList`, never `List.of(...)`,
     or reading them back fails on refresh.

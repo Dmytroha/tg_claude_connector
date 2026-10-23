@@ -12,6 +12,7 @@ import java.text.ParseException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -55,7 +56,7 @@ interface SigningKeys {
      * <p>
      * A new key replaces the current one once it is older than {@code rotationPeriod}. The previous key still
      * verifies tokens for {@code gracePeriod} (the access token lifetime), then it is no longer accepted.
-     * Only the two newest keys are kept.
+     * Only the two newest keys are kept. Keys that cannot be decrypted with the current encryption key are discarded.
      */
     final class Jdbc implements SigningKeys {
 
@@ -138,7 +139,16 @@ interface SigningKeys {
                     .query((rs, rowNum) -> new Row(rs.getString("id"), rs.getString("jwk"),
                             rs.getTimestamp("created_at").toInstant()))
                     .list();
+            var readable = new ArrayList<Row>();
             for (var row : rows) {
+                if (!cipher.canDecrypt(row.jwk())) {
+                    // encrypted with another encryption key: changing the key revokes the old signing keys
+                    jdbc.sql("DELETE FROM oauth2_signing_key WHERE id = :id").param("id", row.id()).update();
+                    log.warn("Discarded token signing key {}: it cannot be decrypted with the current encryption key",
+                            row.id());
+                    continue;
+                }
+                readable.add(row);
                 if (cipher.enabled() && !SecretCipher.isEncrypted(row.jwk())) {
                     // stored before encryption was enabled
                     jdbc.sql("UPDATE oauth2_signing_key SET jwk = :jwk WHERE id = :id")
@@ -146,7 +156,7 @@ interface SigningKeys {
                     log.info("Encrypted the stored token signing key {}", row.id());
                 }
             }
-            return rows.stream()
+            return readable.stream()
                     .map(row -> new StoredKey(row.id(), parse(cipher.decrypt(row.jwk())), row.createdAt()))
                     .toList();
         }
